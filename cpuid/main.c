@@ -13,8 +13,7 @@ int main() {
   cpuid0(&eax, msg);
   msg[12] = 0;
 
-  printf("EAX: %d\n", eax);
-  printf("CPU Vendor: %s\n", msg);
+  printf("%s\n", msg);
 
   return 0;
 }
