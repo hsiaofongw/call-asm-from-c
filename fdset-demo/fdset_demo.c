@@ -8,7 +8,7 @@
 #include <unistd.h>
 
 const int fd_capacity_per_int = sizeof(int) * 8;
-int set_storage[3 * FD_SETSIZE / fd_capacity_per_int];
+int fdset_storage[3 * FD_SETSIZE / fd_capacity_per_int];
 
 const int max_io_buf_size = 256;
 char read_buf[max_io_buf_size];
@@ -28,11 +28,11 @@ void print_write_buf_status() {
           get_write_buf_remain_capacity());
 }
 
-fd_set *read_interest = (void *)(&set_storage[0]);
+fd_set *read_interest = (void *)(&fdset_storage[0]);
 fd_set *write_interest =
-    (void *)(&set_storage[FD_SETSIZE / fd_capacity_per_int]);
+    (void *)(&fdset_storage[FD_SETSIZE / fd_capacity_per_int]);
 fd_set *err_interest =
-    (void *)(&set_storage[2 * FD_SETSIZE / fd_capacity_per_int]);
+    (void *)(&fdset_storage[2 * FD_SETSIZE / fd_capacity_per_int]);
 
 void init_interests() {
   FD_ZERO(read_interest);

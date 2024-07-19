@@ -1,0 +1,9 @@
+{
+  "files.associations": {
+    "netdb.h": "c",
+    "fcntl.h": "c",
+    "errno.h": "c",
+    "inet.h": "c",
+    "*.tcc": "c"
+  }
+}

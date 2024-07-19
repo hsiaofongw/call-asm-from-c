@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {
+      "name": "Linux",
+      "includePath": [
+        "${userHome}/.local/musl-1.2.5/include"
+      ],
+      "compilerPath": "/usr/bin/clang-18",
+      "cStandard": "c17",
+      "cppStandard": "c++20"
+    }
+  ],
+  "version": 4
+}
