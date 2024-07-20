@@ -2,16 +2,22 @@ CC=clang-18
 MUSL_PREFIX=$(HOME)/.local/musl-1.2.5
 CFLAGS=-O3 -I$(MUSL_PREFIX)/include -std=c17
 
-all: fdset_demo socket_mux
+all: fdset_demo socket_mux io_echo
+
+io_echo: io_echo.c util.c
+	$(CC) -o $@ -O3 -flto $^ $(shell pkg-config --cflags --libs libevent)
 
 fdset_demo: fdset_demo.c
-	$(CC) -o $@ $(CFLAGS) $^
+	$(CC) -flto -o $@ $(CFLAGS) -L$(MUSL_PREFIX)/lib --static $^
 
-socket_mux: socket_mux.o llist.o conn_manage.o
+socket_mux: socket_mux.o llist.o conn_manage.o util.o
 	$(CC) -flto -o $@ -L$(MUSL_PREFIX)/lib --static $^
 
 socket_mux.o: socket_mux.c
 	$(CC) -o $@ $(CFLAGS) -c $^
+
+util.o: util.c
+	$(CC) -o $@ -O3 -std=c17 -c $^
 
 llist.o: llist.c
 	$(CC) -o $@ $(CFLAGS) -c $^
@@ -24,6 +30,9 @@ clean:
 	rm -f socket_mux
 	rm -f socket_mux.o
 	rm -f llist.o
-	rm -r conn_manage.o
+	rm -f conn_manage.o
+	rm -f io_echo
+	rm -f io_echo.o
+	rm -f util.o
 
 build: fdset_demo

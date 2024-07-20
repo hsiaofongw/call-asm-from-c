@@ -3,7 +3,7 @@
     {
       "name": "Linux",
       "includePath": [
-        "${userHome}/.local/musl-1.2.5/include"
+        "${userHome}/.local/libevent/include"
       ],
       "compilerPath": "/usr/bin/clang-18",
       "cStandard": "c17",

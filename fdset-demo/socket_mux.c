@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include "conn_manage.h"
+#include "util.h"
 
 #define MAX_PEER_NAME 256
 char peer_name_buf[MAX_PEER_NAME];
@@ -159,23 +160,6 @@ void init_interests() {
   FD_ZERO(write_interest);
   fprintf(stderr, "write_interest at 0x%016lx sized %ld is initialized.\n",
           (unsigned long)write_interest, sizeof(write_fdset_storage));
-}
-
-void set_io_non_block(int fd) {
-  int io_flags;
-  io_flags = fcntl(fd, F_GETFL);
-  if (io_flags == -1) {
-    fprintf(stderr, "Can't read io flags of fd %d.\n", fd);
-    exit(1);
-  }
-
-  io_flags = io_flags | O_NONBLOCK;
-  if (fcntl(STDIN_FILENO, F_SETFL, io_flags) == -1) {
-    fprintf(stderr, "Failed to set io flags of fd %d.\n", fd);
-    exit(1);
-  }
-
-  fprintf(stderr, "fd %d is now O_NONBLOCK\n", fd);
 }
 
 int main(int argc, char *argv[]) {

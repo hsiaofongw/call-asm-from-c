@@ -4,6 +4,12 @@
     "fcntl.h": "c",
     "errno.h": "c",
     "inet.h": "c",
-    "*.tcc": "c"
+    "*.tcc": "c",
+    "event.h": "c",
+    "stddef.h": "c",
+    "types.h": "c",
+    "unistd.h": "c",
+    "conn_manage.h": "c",
+    "util.h": "c"
   }
 }
