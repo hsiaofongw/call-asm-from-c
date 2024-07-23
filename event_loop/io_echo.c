@@ -12,7 +12,7 @@
 #define MAX_READ_BUF 1024
 char io_stage_buf[MAX_READ_BUF];
 
-struct io_cb_closure {
+struct ringbuf {
   char *buf;
   int start_offset;
   int size;
@@ -38,7 +38,7 @@ void on_stdin_activity(int fd, short flags, void *closure) {
       break;
     } else {
       fprintf(stderr, "Got %d bytes from stdin.\n", result);
-      struct io_cb_closure *c = closure;
+      struct ringbuf *c = closure;
       int exceeded = cp_to_ring_buf(c->buf, &(c->start_offset), &(c->size),
                                     c->capacity, buf, result);
       if (exceeded > 0) {
@@ -55,7 +55,7 @@ void on_stdin_activity(int fd, short flags, void *closure) {
 
 void on_stdout_ready_to_write(int fd, short flags, void *closure) {
   fprintf(stderr, "stdout is now ready to write.\n");
-  struct io_cb_closure *c = closure;
+  struct ringbuf *c = closure;
   while (1) {
     char buf[MAX_READ_BUF];
     int chunk_size = get_chunk_from_ring_buf(
@@ -87,7 +87,8 @@ void on_stdout_ready_to_write(int fd, short flags, void *closure) {
         fprintf(stderr, "Returning %d bytes chunk to the ring buffer.\n",
                 chunk_size - result);
         return_chunk_to_ring_buf(c->buf, &(c->start_offset), &(c->size),
-                                 c->capacity, buf, chunk_size - result);
+                                 c->capacity, &buf[result],
+                                 chunk_size - result);
       }
     }
   }
@@ -100,10 +101,10 @@ int main() {
     exit(1);
   }
 
-  struct io_cb_closure closure = {.buf = io_stage_buf,
-                                  .capacity = sizeof(io_stage_buf),
-                                  .size = 0,
-                                  .start_offset = 0};
+  struct ringbuf closure = {.buf = io_stage_buf,
+                            .capacity = sizeof(io_stage_buf),
+                            .size = 0,
+                            .start_offset = 0};
 
   set_io_non_block(STDIN_FILENO);
   set_io_non_block(STDOUT_FILENO);

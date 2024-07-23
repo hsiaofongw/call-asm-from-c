@@ -40,4 +40,8 @@ void return_chunk_to_ring_buf(char *dst_base, int *dst_start_offset,
                               int *dst_curr_size, const int dst_capacity,
                               const char *src, const int nbytes);
 
+int get_peer_pretty_name(char *buf, ssize_t buflen, struct sockaddr *addr);
+
+void sprint_conn(char *buf, size_t buflen, int fd);
+
 #endif

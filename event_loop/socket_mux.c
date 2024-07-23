@@ -46,54 +46,8 @@ void close_fd_or_panic(int fd) {
   }
 }
 
-int get_peer_pretty_name(struct sockaddr *addr, char *buf, ssize_t buflen) {
-  int ip_str_len = 0;
-  int portnum = 0;
-  if (addr->sa_family == AF_INET6) {
-    struct sockaddr_in6 *s = (struct sockaddr_in6 *)addr;
-    char ipv6_addr_buf[INET6_ADDRSTRLEN + 1];
-    if (inet_ntop(AF_INET6, &s->sin6_addr, ipv6_addr_buf, INET6_ADDRSTRLEN) ==
-        NULL) {
-      fprintf(stderr, "Failed to stringify IPv6 address: %s\n",
-              strerror(errno));
-      return -1;
-    }
-
-    return snprintf(buf, buflen, "[%s]:%d", ipv6_addr_buf, (s->sin6_port));
-  } else if (addr->sa_family == AF_INET) {
-    struct sockaddr_in *s = (struct sockaddr_in *)addr;
-    char ipv4_addr_buf[INET_ADDRSTRLEN + 1];
-    if (inet_ntop(AF_INET, &s->sin_addr.s_addr, ipv4_addr_buf,
-                  INET_ADDRSTRLEN) == NULL) {
-      fprintf(stderr, "Failed to stringify IP address: %s\n", strerror(errno));
-      return -1;
-    }
-
-    return snprintf(buf, buflen, "%s:%d", ipv4_addr_buf, ntohs(s->sin_port));
-  } else {
-    fprintf(stderr, "Unknown address family.\n");
-    return -1;
-  }
-}
-
-void sprint_conn(int fd, char *buf, size_t buflen) {
-  struct sockaddr_storage cli_addr_store;
-  socklen_t cli_addr_size = sizeof(cli_addr_size);
-
-  if (getpeername(fd, (struct sockaddr *)&cli_addr_store, &cli_addr_size) ==
-      -1) {
-    fprintf(stderr, "Failed to get peer address (fd = %d), errorno: %s\n", fd,
-            strerror(errno));
-  }
-
-  if (get_peer_pretty_name((struct sockaddr *)(&cli_addr_store), buf, buflen) ==
-      -1) {
-    fprintf(stderr, "Failed to stringify peer address.\n");
-  }
-}
-
 void print_accept_conn(int cli_skt) {
-  sprint_conn(cli_skt, peer_name_buf, sizeof(peer_name_buf));
+  sprint_conn(peer_name_buf, sizeof(peer_name_buf), cli_skt);
   fprintf(stderr, "Accepted new connection from %s\n", peer_name_buf);
 }
 
@@ -101,7 +55,7 @@ struct conn_traverse_closure {
   int *max_fd;
 };
 void conn_travese_accessor(int fd, int idx, void *closure) {
-  sprint_conn(fd, peer_name_buf, sizeof(peer_name_buf));
+  sprint_conn(peer_name_buf, sizeof(peer_name_buf), fd);
   fprintf(stderr, "[%d] fd=%d address=%s\n", idx, fd, peer_name_buf);
   FD_SET(fd, read_interest);
   struct conn_traverse_closure *ctx = closure;
@@ -117,7 +71,7 @@ struct conn_activity_check_closure {
 };
 void conn_check_ready_accessor(int fd, int idx, void *closure) {
   struct conn_activity_check_closure *ctx = closure;
-  sprint_conn(fd, peer_name_buf, sizeof(peer_name_buf));
+  sprint_conn(peer_name_buf, sizeof(peer_name_buf), fd);
   fprintf(stderr, "Checking activity from fd=%d address=%s...  ", fd,
           peer_name_buf);
   if (FD_ISSET(fd, read_interest)) {

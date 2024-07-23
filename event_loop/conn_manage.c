@@ -140,5 +140,5 @@ void cm_ctx_gc(conn_manage_ctx cm_ctx, void (*before_conn_remove)(int fd)) {
   struct cm_ctx_gc_closure closure;
   closure.before_conn_remove = before_conn_remove;
   list_elem_find_and_remove(&(impl->fds), NULL, gc_predicate, &closure,
-                            gc_before_elem_delete);
+                            gc_before_elem_delete, 1);
 }

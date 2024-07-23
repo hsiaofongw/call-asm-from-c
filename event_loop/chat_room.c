@@ -1,0 +1,453 @@
+#include <error.h>
+#include <event2/event.h>
+#include <memory.h>
+#include <netdb.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include "llist.h"
+#include "ringbuf.h"
+#include "util.h"
+
+#define MAX_READ_BUF 1024
+char io_stage_buf[MAX_READ_BUF];
+
+#define MAX_SERVER_WRITE_BUF 1024 * 1024
+
+#define MAX_LISTEN_BACKLOG 20
+
+struct server_ctx;
+struct conn_ctx {
+  int fd;
+  ringbuf *read_buf;
+  ringbuf *write_buf;
+  struct server_ctx *srv;
+  struct event *write_event;
+  struct event *read_event;
+
+  // never read from a file that is not readable
+  // also never write to a file that is not writable
+  // a network socket usually be both readable and writable, whilst stdin,
+  // stdout do now, at least you can never get input from stdout!
+  int readable;
+  int writable;
+
+  // for stdin, after_freed means server shutdown,
+  // for ordinary network socket, after_freed means simply close socket.
+  void (*after_freed)(int fd);
+};
+
+void after_stdin_close(int fd) {
+  fprintf(stderr, "Bye!\n");
+  exit(0);
+}
+
+void after_network_socket_close(int fd) {
+  close(fd);
+  fprintf(stderr, "Socket fd %d is closed.\n", fd);
+}
+
+struct server_ctx {
+  llist_t **all_conns;
+  struct event_base *evb;
+  int server_socket;
+  ringbuf *write_buf;
+  struct event *write_event;
+};
+
+struct conn_ctx *conn_ctx_create(int fd) {
+  struct conn_ctx *c = malloc(sizeof(struct conn_ctx));
+  c->fd = fd;
+  c->write_event =
+      NULL;  // this is intended, write_event are register on-demand.
+  c->read_buf = ringbuf_create(MAX_READ_BUF);
+  c->write_buf = ringbuf_create(MAX_READ_BUF);
+  c->after_freed = NULL;
+
+  return c;
+}
+
+void conn_ctx_free(struct conn_ctx *c) {
+  void *after_free_cb = c->after_freed;
+  int fd = c->fd;
+  ringbuf_free(c->read_buf);
+  ringbuf_free(c->write_buf);
+  free(c);
+  if (after_free_cb != NULL) {
+    void (*cb)(int fd) = after_free_cb;
+    cb(fd);
+  }
+}
+
+int conn_ctx_list_elem_finder(void *payload, int idx, void *closure) {
+  return payload == closure ? 1 : 0;
+}
+
+void conn_ctx_list_elem_deleter(void *payload, void *closure) {
+  struct conn_ctx *c = payload;
+  conn_ctx_free(c);
+}
+
+void on_read_eof(struct conn_ctx *c_ctx) {
+  event_del(c_ctx->read_event);
+  int delete_all = 0;
+  list_elem_find_and_remove(c_ctx->srv->all_conns, c_ctx,
+                            conn_ctx_list_elem_finder, NULL,
+                            conn_ctx_list_elem_deleter, delete_all);
+}
+
+void on_write_eof(struct conn_ctx *c_ctx) {
+  event_del(c_ctx->write_event);
+  int delete_all = 0;
+  list_elem_find_and_remove(c_ctx->srv->all_conns, c_ctx,
+                            conn_ctx_list_elem_finder, NULL,
+                            conn_ctx_list_elem_deleter, delete_all);
+}
+
+void on_ready_to_read(int fd, short flags, void *closure) {
+  struct conn_ctx *c_ctx = closure;
+
+  fprintf(stderr, "fd %d is now ready to read.\n", fd);
+  char buf[MAX_READ_BUF];
+  while (1) {
+    int result = read(fd, buf, sizeof(buf));
+    if (result == 0) {
+      fprintf(stderr, "Got EOF from fd %d\n", fd);
+      on_read_eof(c_ctx);
+      break;
+    } else if (result < 0) {
+      if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        fprintf(stderr, "read: %s\n", strerror(errno));
+        exit(1);
+      }
+      fprintf(stderr,
+              "fd %d is drained (for now), we would come here later (when it "
+              "goes up again).\n",
+              fd);
+      break;
+    } else {
+      fprintf(stderr, "Got %d bytes from fd %d.\n", result, fd);
+      int exceeded = ringbuf_send_chunk(c_ctx->read_buf, buf, result);
+      if (exceeded > 0) {
+        fprintf(
+            stderr,
+            "Warning: ringbuf 0x%016lx is fullfilled, %d bytes of data that is "
+            "written in "
+            "earlist would be overwritten.\n",
+            (unsigned long)(c_ctx->read_buf), exceeded);
+      }
+    }
+  }
+}
+
+void on_ready_to_write(int fd, short flags, void *closure) {
+  fprintf(stderr, "fd %d is now ready to write.\n", fd);
+  struct conn_ctx *c_ctx = closure;
+  while (1) {
+    if (ringbuf_is_empty(c_ctx->write_buf)) {
+      fprintf(
+          stderr,
+          "write_buf of fd %d is drained, removing its write interest now.\n",
+          fd);
+      event_del(c_ctx->write_event);
+      c_ctx->write_event = NULL;
+      break;
+    }
+
+    char buf[MAX_READ_BUF];
+    int chunk_size = ringbuf_receive_chunk(buf, sizeof(buf), c_ctx->write_buf);
+    fprintf(stderr, "Got %d bytes chunk from the ring buffer.\n", chunk_size);
+
+    int result = write(fd, buf, chunk_size);
+    if (result == 0) {
+      fprintf(stderr,
+              "Got EOF from fd %d, this means the file (or network socket) "
+              "is closed, releasing the corresponding connection context.\n",
+              fd);
+      on_write_eof(c_ctx);
+      break;
+    } else if (result < 0) {
+      if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        fprintf(stderr, "write: %s\n", strerror(errno));
+        exit(1);
+      }
+      fprintf(stderr,
+              "fd %d is busy for now, we would come here later (when it "
+              "goes up again).\n",
+              fd);
+      break;  // return to event loop
+    } else {
+      fprintf(stderr, "Emitted %d bytes to fd %d.\n", result, fd);
+      if (result < chunk_size) {
+        // need to insert them back to the ringbuf
+        fprintf(stderr, "Returning %d bytes chunk to the ring buffer.\n",
+                chunk_size - result);
+        ringbuf_return_chunk(c_ctx->write_buf, &buf[result],
+                             chunk_size - result);
+      }
+    }
+  }
+}
+
+void register_read_interest(struct server_ctx *this, int fd,
+                            void (*after_freed)(int), int readable,
+                            int writable) {
+  struct event_base *evb = this->evb;
+  set_io_non_block(fd);
+  struct conn_ctx *c_ctx = conn_ctx_create(fd);
+  c_ctx->srv = this;
+  c_ctx->after_freed = after_freed;
+  c_ctx->readable = readable;
+  c_ctx->writable = writable;
+
+  struct event *ev =
+      event_new(evb, fd, EV_READ | EV_PERSIST, on_ready_to_read, c_ctx);
+  if (ev == NULL) {
+    fprintf(stderr, "Failed to create event object for fd %d\n", fd);
+    exit(1);
+  }
+  c_ctx->read_event = ev;
+
+  if (event_add(ev, NULL) != 0) {
+    fprintf(stderr, "Failed to register read event to fd %d\n", fd);
+    exit(1);
+  }
+
+  *this->all_conns = list_insert_payload(*this->all_conns, c_ctx);
+  fprintf(stderr, "Registered read interest for fd %d\n", fd);
+}
+
+void register_stdin_read_interest(struct server_ctx *srv) {
+  register_read_interest(srv, STDIN_FILENO, after_stdin_close, 1, 0);
+}
+
+void register_write_interest(struct conn_ctx *c_ctx, int fd) {
+  struct server_ctx *srv = c_ctx->srv;
+  struct event_base *evb = srv->evb;
+
+  struct event *ev =
+      event_new(evb, fd, EV_WRITE | EV_PERSIST, on_ready_to_write, c_ctx);
+
+  if (ev == NULL) {
+    fprintf(stderr, "Failed to create event object for fd %d\n", fd);
+    exit(1);
+  }
+
+  c_ctx->write_event = ev;
+
+  if (event_add(ev, NULL) != 0) {
+    fprintf(stderr, "Failed to register write event to fd %d\n", fd);
+    exit(1);
+  }
+}
+
+void register_stdout_write_interest(struct server_ctx *srv) {
+  struct event_base *evb = srv->evb;
+  set_io_non_block(STDOUT_FILENO);
+  struct conn_ctx *c_ctx = conn_ctx_create(STDOUT_FILENO);
+  c_ctx->after_freed = NULL;
+  c_ctx->readable = 0;
+  c_ctx->writable = 1;
+  c_ctx->srv = srv;
+
+  *srv->all_conns = list_insert_payload(*srv->all_conns, c_ctx);
+}
+
+void on_ready_to_accept(int srv_skt, short libev_flags, void *closure) {
+  fprintf(stderr,
+          "Server (fd %d) is now ready to accept new incoming connection.\n",
+          srv_skt);
+
+  struct sockaddr_storage cli_addr_store;
+  socklen_t cli_addr_size = sizeof(cli_addr_size);
+  int cli_fd =
+      accept(srv_skt, (struct sockaddr *)&cli_addr_store, &cli_addr_size);
+  if (cli_fd == -1) {
+    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+      fprintf(stderr,
+              "Unknown error when accepting client connection: accept: %s\n",
+              strerror(errno));
+      exit(1);
+    }
+
+    // simply because server is not ready to accept new incoming connection for
+    // now, so we will go back to event loop and come back to here later.
+    return;
+  }
+
+  char peer_addr[INET6_ADDRSTRLEN * 2];
+  sprint_conn(peer_addr, sizeof(peer_addr), cli_fd);
+  fprintf(stderr, "Accepted connection from %s, fd %d\n", peer_addr, cli_fd);
+  struct server_ctx *srv = closure;
+  register_read_interest(srv, cli_fd, after_network_socket_close, 1, 1);
+}
+
+void register_accept_conn_interest(struct server_ctx *srv) {
+  short ev_flags = 0;
+  ev_flags |= EV_READ;
+  ev_flags |= EV_PERSIST;
+
+  struct event *ev = event_new(srv->evb, srv->server_socket, ev_flags,
+                               on_ready_to_accept, srv);
+  if (ev == NULL) {
+    fprintf(stderr, "Failed to create server accpet event.\n");
+    exit(1);
+  }
+
+  if (event_add(ev, NULL) != 0) {
+    fprintf(stderr, "Failed to add server accept event.\n");
+    exit(1);
+  }
+}
+
+int server_socket_bootstrap(char *port) {
+  int srv_skt = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (srv_skt == -1) {
+    fprintf(stderr, "Failed to create server socket: socket: %s.\n",
+            strerror(errno));
+    exit(1);
+  }
+
+  set_io_non_block(srv_skt);
+
+  struct addrinfo bind_ai_hints, *bind_ai_res;
+  memset(&bind_ai_hints, 0, sizeof(bind_ai_hints));
+  bind_ai_hints.ai_family = AF_INET;
+  bind_ai_hints.ai_socktype = SOCK_STREAM;
+  bind_ai_hints.ai_flags = AI_PASSIVE;
+  if (getaddrinfo(NULL, port, &bind_ai_hints, &bind_ai_res) == -1) {
+    fprintf(stderr, "getaddrinfo: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  if (bind(srv_skt, bind_ai_res->ai_addr, bind_ai_res->ai_addrlen) == -1) {
+    fprintf(stderr, "bind: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  if (listen(srv_skt, MAX_LISTEN_BACKLOG) == -1) {
+    fprintf(stderr, "listen: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  return srv_skt;
+}
+
+struct server_ctx *server_start(char *port) {
+  struct server_ctx *srv = malloc(sizeof(struct server_ctx));
+
+  srv->write_buf = ringbuf_create(MAX_SERVER_WRITE_BUF);
+
+  srv->server_socket = server_socket_bootstrap(port);
+
+  srv->all_conns = (llist_t **)malloc(sizeof(llist_t *));
+  *srv->all_conns = list_create();
+
+  srv->evb = event_base_new();
+  if (srv->evb == NULL) {
+    fprintf(stderr, "Failed to create event base.\n");
+    exit(1);
+  }
+  register_accept_conn_interest(srv);
+  register_stdin_read_interest(srv);
+  register_stdout_write_interest(srv);
+
+  return srv;
+}
+
+void server_shutdown(struct server_ctx *srv) {
+  list_free(*(srv->all_conns), conn_ctx_list_elem_deleter, NULL);
+  free(srv->all_conns);
+  event_base_free(srv->evb);
+  ringbuf_free(srv->write_buf);
+
+  free(srv);
+}
+
+int collect_input_from_all_readbufs_traverse_conn_ctx(void *payload, int idx,
+                                                      void *closure) {
+  struct server_ctx *srv = closure;
+  struct conn_ctx *c = payload;
+  if (!c->readable) {
+    // this conn is not readable, so skip it.
+    return 1;
+  }
+
+  int exceeded = ringbuf_transfer_all(srv->write_buf, c->read_buf);
+  if (exceeded > 0) {
+    fprintf(stderr,
+            "Warning: the server write buffer at 0x%016lx has exceeded %d "
+            "bytes, stop collecting.",
+            (unsigned long)srv->write_buf, exceeded);
+    return 0;
+  }
+  return 1;
+}
+
+void collect_input_from_all_readbufs(struct server_ctx *srv) {
+  list_traverse_payload(*srv->all_conns, srv,
+                        collect_input_from_all_readbufs_traverse_conn_ctx);
+}
+
+int broadcast_to_all_emitters_traverse_conn_ctx(void *payload, int idx,
+                                                void *closure) {
+  struct server_ctx *srv = closure;
+  struct conn_ctx *c = payload;
+  // fprintf(stderr, "Debug fd %d writable %d readable %d\n", c->fd,
+  // c->writable, c->readable);
+  if (!c->writable) {
+    return 1;
+  }
+
+  ringbuf_copy_all(c->write_buf, srv->write_buf);
+  if (!c->write_event || c->write_event == NULL) {
+    register_write_interest(c, c->fd);
+  }
+
+  return 1;
+}
+
+void broadcast_to_all_emitters(struct server_ctx *srv) {
+  list_traverse_payload(*srv->all_conns, srv,
+                        broadcast_to_all_emitters_traverse_conn_ctx);
+
+  // write_buf of server has now been populated to each emitter's write buf,
+  // it's safe to clear it.
+  ringbuf_clear(srv->write_buf);
+}
+
+int server_run(struct server_ctx *srv) {
+  while (1) {
+    fprintf(stderr, "Waiting IO activity...\n");
+    int evb_loop_flags = EVLOOP_ONCE;
+    event_base_loop(srv->evb, evb_loop_flags);
+
+    collect_input_from_all_readbufs(srv);
+
+    if (!ringbuf_is_empty(srv->write_buf)) {
+      // Non-empty srv->write_buf means we do collected something from readbufs
+      // of those readable conns.
+      broadcast_to_all_emitters(srv);
+    }
+  }
+
+  server_shutdown(srv);
+  return 0;
+}
+
+int main(int argc, char *argv[]) {
+  if (argc <= 1) {
+    fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+    exit(1);
+  }
+  char *port = argv[1];
+
+  struct server_ctx *srv = server_start(port);
+  fprintf(stderr, "Server listening on %s\n", port);
+
+  return server_run(srv);
+}

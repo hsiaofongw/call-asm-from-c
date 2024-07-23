@@ -2,3 +2,5 @@ fdset_demo
 socket_muxio_echo
 io_echo
 socket_mux
+chat_room
+chat_room_dbg
