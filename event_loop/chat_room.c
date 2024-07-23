@@ -13,10 +13,11 @@
 #include "ringbuf.h"
 #include "util.h"
 
-#define MAX_READ_BUF 1024
-char io_stage_buf[MAX_READ_BUF];
+#define MAX_READ_BUF ((0x1UL) << 10)
+#define MAX_WRITE_BUF_PER_CONN (((0x1UL) << 20) * 32)
+#define MAX_SERVER_WRITE_BUF (((0x1UL) << 10) * 512)
 
-#define MAX_SERVER_WRITE_BUF 1024 * 1024
+char io_stage_buf[MAX_READ_BUF];
 
 #define MAX_LISTEN_BACKLOG 20
 
@@ -65,7 +66,7 @@ struct conn_ctx *conn_ctx_create(int fd) {
   c->write_event =
       NULL;  // this is intended, write_event are register on-demand.
   c->read_buf = ringbuf_create(MAX_READ_BUF);
-  c->write_buf = ringbuf_create(MAX_READ_BUF);
+  c->write_buf = ringbuf_create(MAX_WRITE_BUF_PER_CONN);
   c->after_freed = NULL;
 
   return c;
@@ -74,8 +75,14 @@ struct conn_ctx *conn_ctx_create(int fd) {
 void conn_ctx_free(struct conn_ctx *c) {
   void *after_free_cb = c->after_freed;
   int fd = c->fd;
-  ringbuf_free(c->read_buf);
-  ringbuf_free(c->write_buf);
+  if (c->read_buf != NULL) {
+    ringbuf_free(c->read_buf);
+    c->read_buf = NULL;
+  }
+  if (c->write_buf != NULL) {
+    ringbuf_free(c->write_buf);
+    c->write_buf = NULL;
+  }
   free(c);
   if (after_free_cb != NULL) {
     void (*cb)(int fd) = after_free_cb;
@@ -92,16 +99,19 @@ void conn_ctx_list_elem_deleter(void *payload, void *closure) {
   conn_ctx_free(c);
 }
 
-void on_read_eof(struct conn_ctx *c_ctx) {
-  event_del(c_ctx->read_event);
-  int delete_all = 0;
-  list_elem_find_and_remove(c_ctx->srv->all_conns, c_ctx,
-                            conn_ctx_list_elem_finder, NULL,
-                            conn_ctx_list_elem_deleter, delete_all);
-}
+void on_file_eof(struct conn_ctx *c_ctx) {
+  if (c_ctx->read_event != NULL) {
+    event_del(c_ctx->read_event);
+    event_free(c_ctx->read_event);
+    c_ctx->read_event = NULL;
+  }
 
-void on_write_eof(struct conn_ctx *c_ctx) {
-  event_del(c_ctx->write_event);
+  if (c_ctx->write_event != NULL) {
+    event_del(c_ctx->write_event);
+    event_free(c_ctx->write_event);
+    c_ctx->write_event = NULL;
+  }
+
   int delete_all = 0;
   list_elem_find_and_remove(c_ctx->srv->all_conns, c_ctx,
                             conn_ctx_list_elem_finder, NULL,
@@ -114,10 +124,22 @@ void on_ready_to_read(int fd, short flags, void *closure) {
   fprintf(stderr, "fd %d is now ready to read.\n", fd);
   char buf[MAX_READ_BUF];
   while (1) {
-    int result = read(fd, buf, sizeof(buf));
+    int max_read = sizeof(buf);
+    const int remain_cap = ringbuf_get_remaining_capacity(c_ctx->read_buf);
+
+    if (remain_cap <= 0) {
+      event_del(c_ctx->read_event);
+      break;
+    }
+
+    if (remain_cap < max_read) {
+      max_read = remain_cap;
+    }
+
+    int result = read(fd, buf, max_read);
     if (result == 0) {
       fprintf(stderr, "Got EOF from fd %d\n", fd);
-      on_read_eof(c_ctx);
+      on_file_eof(c_ctx);
       break;
     } else if (result < 0) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -133,12 +155,12 @@ void on_ready_to_read(int fd, short flags, void *closure) {
       fprintf(stderr, "Got %d bytes from fd %d.\n", result, fd);
       int exceeded = ringbuf_send_chunk(c_ctx->read_buf, buf, result);
       if (exceeded > 0) {
-        fprintf(
-            stderr,
-            "Warning: ringbuf 0x%016lx is fullfilled, %d bytes of data that is "
-            "written in "
-            "earlist would be overwritten.\n",
-            (unsigned long)(c_ctx->read_buf), exceeded);
+        fprintf(stderr,
+                "Warning: ringbuf 0x%016lx is fullfilled, and this is "
+                "unexpected, %d bytes of data that is "
+                "written in "
+                "earlist has been overwritten.\n",
+                (unsigned long)(c_ctx->read_buf), exceeded);
       }
     }
   }
@@ -154,7 +176,6 @@ void on_ready_to_write(int fd, short flags, void *closure) {
           "write_buf of fd %d is drained, removing its write interest now.\n",
           fd);
       event_del(c_ctx->write_event);
-      c_ctx->write_event = NULL;
       break;
     }
 
@@ -168,7 +189,7 @@ void on_ready_to_write(int fd, short flags, void *closure) {
               "Got EOF from fd %d, this means the file (or network socket) "
               "is closed, releasing the corresponding connection context.\n",
               fd);
-      on_write_eof(c_ctx);
+      on_file_eof(c_ctx);
       break;
     } else if (result < 0) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -223,26 +244,6 @@ void register_read_interest(struct server_ctx *this, int fd,
 
 void register_stdin_read_interest(struct server_ctx *srv) {
   register_read_interest(srv, STDIN_FILENO, after_stdin_close, 1, 0);
-}
-
-void register_write_interest(struct conn_ctx *c_ctx, int fd) {
-  struct server_ctx *srv = c_ctx->srv;
-  struct event_base *evb = srv->evb;
-
-  struct event *ev =
-      event_new(evb, fd, EV_WRITE | EV_PERSIST, on_ready_to_write, c_ctx);
-
-  if (ev == NULL) {
-    fprintf(stderr, "Failed to create event object for fd %d\n", fd);
-    exit(1);
-  }
-
-  c_ctx->write_event = ev;
-
-  if (event_add(ev, NULL) != 0) {
-    fprintf(stderr, "Failed to register write event to fd %d\n", fd);
-    exit(1);
-  }
 }
 
 void register_stdout_write_interest(struct server_ctx *srv) {
@@ -368,56 +369,62 @@ void server_shutdown(struct server_ctx *srv) {
   free(srv);
 }
 
-int collect_input_from_all_readbufs_traverse_conn_ctx(void *payload, int idx,
-                                                      void *closure) {
+int collect_input_from_each_readbuf(void *payload, int idx, void *closure) {
   struct server_ctx *srv = closure;
   struct conn_ctx *c = payload;
   if (!c->readable) {
-    // this conn is not readable, so skip it.
     return 1;
   }
 
-  int exceeded = ringbuf_transfer_all(srv->write_buf, c->read_buf);
-  if (exceeded > 0) {
-    fprintf(stderr,
-            "Warning: the server write buffer at 0x%016lx has exceeded %d "
-            "bytes, stop collecting.",
-            (unsigned long)srv->write_buf, exceeded);
-    return 0;
+  int remain_cap = ringbuf_get_remaining_capacity(srv->write_buf);
+  if (remain_cap <= 0) {
+    return 1;
   }
+
+  ringbuf_transfer(srv->write_buf, c->read_buf, remain_cap);
+  if (!event_pending(c->read_event, EV_READ, NULL)) {
+    if (event_add(c->read_event, NULL) != 0) {
+      fprintf(stderr, "Failed to register read event to fd %d\n", c->fd);
+      exit(1);
+    }
+  }
+
   return 1;
 }
 
-void collect_input_from_all_readbufs(struct server_ctx *srv) {
-  list_traverse_payload(*srv->all_conns, srv,
-                        collect_input_from_all_readbufs_traverse_conn_ctx);
-}
+int emit_to_each_writable_conn(void *payload, int idx, void *closure) {
+  struct conn_ctx *c_ctx = payload;
+  if (!c_ctx->writable) {
+    return 1;
+  }
 
-int broadcast_to_all_emitters_traverse_conn_ctx(void *payload, int idx,
-                                                void *closure) {
+  int remain_cap = ringbuf_get_remaining_capacity(c_ctx->write_buf);
+  if (remain_cap <= 0) {
+    return 1;
+  }
+
   struct server_ctx *srv = closure;
-  struct conn_ctx *c = payload;
-  // fprintf(stderr, "Debug fd %d writable %d readable %d\n", c->fd,
-  // c->writable, c->readable);
-  if (!c->writable) {
-    return 1;
+  struct event_base *evb = srv->evb;
+
+  ringbuf_copy(c_ctx->write_buf, srv->write_buf, remain_cap);
+
+  if (!c_ctx->write_event || c_ctx->write_event == NULL) {
+    c_ctx->write_event = event_new(evb, c_ctx->fd, EV_WRITE | EV_PERSIST,
+                                   on_ready_to_write, c_ctx);
+    if (c_ctx->write_event == NULL) {
+      fprintf(stderr, "Failed to create event object for fd %d\n", c_ctx->fd);
+      exit(1);
+    }
   }
 
-  ringbuf_copy_all(c->write_buf, srv->write_buf);
-  if (!c->write_event || c->write_event == NULL) {
-    register_write_interest(c, c->fd);
+  if (!event_pending(c_ctx->write_event, EV_WRITE, NULL)) {
+    if (event_add(c_ctx->write_event, NULL) != 0) {
+      fprintf(stderr, "Failed to register write event to fd %d\n", c_ctx->fd);
+      exit(1);
+    }
   }
 
   return 1;
-}
-
-void broadcast_to_all_emitters(struct server_ctx *srv) {
-  list_traverse_payload(*srv->all_conns, srv,
-                        broadcast_to_all_emitters_traverse_conn_ctx);
-
-  // write_buf of server has now been populated to each emitter's write buf,
-  // it's safe to clear it.
-  ringbuf_clear(srv->write_buf);
 }
 
 int server_run(struct server_ctx *srv) {
@@ -426,12 +433,36 @@ int server_run(struct server_ctx *srv) {
     int evb_loop_flags = EVLOOP_ONCE;
     event_base_loop(srv->evb, evb_loop_flags);
 
-    collect_input_from_all_readbufs(srv);
+    // 只有确保 server 的 write_buf 能容纳所有 client 的
+    // read_buf，才去 collect 每个 read_buf 的内容到 server 的 write_buf。
+    // 因为，如果 client 的 read_buf 满了，server 就会调用 event_del
+    // 移除 read interest，也就是停止（调用 read 方法）从 client
+    // 读入更多数据，迫使 client 减轻向 server
+    // 的发包速率和发包流量（发慢点、发少点），某种程度上来说你可以把这理解为一种反压措施。
+    const int sum_of_cli_read_buf_size =
+        list_get_size(*srv->all_conns) * MAX_READ_BUF;
+    if (ringbuf_get_remaining_capacity(srv->write_buf) >=
+        sum_of_cli_read_buf_size) {
+      list_traverse_payload(*srv->all_conns, srv,
+                            collect_input_from_each_readbuf);
+    }
+
+    // 检查 server 的 write_buf
+    // 是否需要动态扩容（正如刚才所说，它需要具备容纳所有 client 的 read_buf
+    // 的能力）
+    const int curr_srv_write_buf_size = ringbuf_get_capacity(srv->write_buf);
+    if (curr_srv_write_buf_size < sum_of_cli_read_buf_size) {
+      int new_size = ringbuf_upscale_if_needed(&(srv->write_buf),
+                                               sum_of_cli_read_buf_size);
+      if (new_size > curr_srv_write_buf_size) {
+        fprintf(stderr, "Server's write_buf has been up-scaled to %d bytes\n",
+                new_size);
+      }
+    }
 
     if (!ringbuf_is_empty(srv->write_buf)) {
-      // Non-empty srv->write_buf means we do collected something from readbufs
-      // of those readable conns.
-      broadcast_to_all_emitters(srv);
+      list_traverse_payload(*srv->all_conns, srv, emit_to_each_writable_conn);
+      ringbuf_clear(srv->write_buf);
     }
   }
 

@@ -24,14 +24,11 @@ int ringbuf_receive_chunk(char *dst, const int dst_bytes_max_writes,
 // ringbuf_receive_chunk 的逆操作。
 void ringbuf_return_chunk(ringbuf *dst, const char *src, const int nbytes);
 
-// 把 src ringbuf 的内容全部移至（追加至）dst ringbuf（的尾部），操作完成之后
-// src ringbuf 为空（size 变为 0），而 dst ringbuf 的 size
-// 可能会增加（如果它处于未满状态），如果 dst ringbuf 在这样操作之间已满，则其
-// size 不会增加，但是先前（最早些时候）写入的内容会被覆盖。
-int ringbuf_transfer_all(ringbuf *dst, ringbuf *src);
+// 从 src 复制最多 len 字节大小的数据到 dst 尾部
+int ringbuf_copy(ringbuf *dst, ringbuf *src, const int len);
 
-// 类似于 ringbuf_transfer_all，但是 src ringbuf 的内容会被保留而非清空。
-int ringbuf_copy_all(ringbuf *dst, ringbuf *src);
+// 从 src 转移最多 len 字节大小的数据到 dst 尾部
+int ringbuf_transfer(ringbuf *dst, ringbuf *src, const int len);
 
 // 清空一个 ringbuf 的所有内容，它的 size 会变成 0，又能容纳 capacity
 // 个字节的数据。
@@ -39,5 +36,16 @@ void ringbuf_clear(ringbuf *rb);
 
 // 判断一个 ringbuf 是否为空。
 int ringbuf_is_empty(ringbuf *rb);
+
+// 获取剩余容量
+int ringbuf_get_remaining_capacity(ringbuf *rb);
+
+// 当实际容量不及预期容量时进行扩容（i.e.
+// 条件扩容），返回实际容量，如果扩容了，返回扩容后的实际容量（不一定等于
+// expected_size，但一定不小于它）。
+int ringbuf_upscale_if_needed(ringbuf **rb, const int expected_size);
+
+// 获取 ringbuf 的容量（不是 size）
+int ringbuf_get_capacity(ringbuf *rb);
 
 #endif

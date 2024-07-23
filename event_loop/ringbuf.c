@@ -72,27 +72,66 @@ void ringbuf_return_chunk(struct ringbuf_impl *dst, const char *src,
   }
 }
 
-int ringbuf_copy_all(struct ringbuf_impl *dst, struct ringbuf_impl *src) {
-  for (int i = 0; i < src->size; ++i) {
+int ringbuf_copy(struct ringbuf_impl *dst, struct ringbuf_impl *src,
+                 const int len) {
+  int actual_writes = 0;
+  for (int i = 0; i < src->size && i < len; ++i) {
     dst->buf[(dst->start_offset + dst->size + i) % dst->capacity] =
         src->buf[(src->start_offset + i) % src->capacity];
+    ++actual_writes;
   }
-  dst->size += src->size;
-  int exceeded = dst->size - dst->capacity;
-  if (exceeded > 0) {
+  dst->size += actual_writes;
+  if (dst->size > dst->capacity) {
+    int exceeded = dst->size - dst->capacity;
     dst->size = dst->capacity;
     dst->start_offset = (dst->start_offset + exceeded) % dst->capacity;
-    return exceeded;
   }
-  return 0;
+  return actual_writes;
 }
 
-int ringbuf_transfer_all(struct ringbuf_impl *dst, struct ringbuf_impl *src) {
-  int exceeded = ringbuf_copy_all(dst, src);
-  src->size = 0;
-  return exceeded;
+int ringbuf_transfer(struct ringbuf_impl *dst, struct ringbuf_impl *src,
+                     const int len) {
+  int actual_writes = 0;
+  for (int i = 0; i < src->size && i < len; ++i) {
+    dst->buf[(dst->start_offset + dst->size + i) % dst->capacity] =
+        src->buf[(src->start_offset + i) % src->capacity];
+    ++actual_writes;
+  }
+
+  dst->size += actual_writes;
+  if (dst->size > dst->capacity) {
+    int exceeded = dst->size - dst->capacity;
+    dst->size = dst->capacity;
+    dst->start_offset = (dst->start_offset + exceeded) % dst->capacity;
+  }
+
+  src->size -= actual_writes;
+  src->start_offset = (src->start_offset + actual_writes) % src->capacity;
+
+  return actual_writes;
 }
 
 void ringbuf_clear(struct ringbuf_impl *rb) { rb->size = 0; }
 
 int ringbuf_is_empty(struct ringbuf_impl *rb) { return rb->size == 0 ? 1 : 0; }
+
+int ringbuf_get_remaining_capacity(ringbuf *rb) {
+  return rb->capacity - rb->size;
+}
+
+int ringbuf_upscale_if_needed(struct ringbuf_impl **rb,
+                              const int expected_size) {
+  struct ringbuf_impl *src = *rb;
+  if (src->size >= expected_size) {
+    return src->size;
+  }
+
+  struct ringbuf_impl *new_rb = ringbuf_create(expected_size);
+  for (int i = 0; i < src->size; ++i) {
+    new_rb->buf[i] = src->buf[(src->start_offset + i) % src->capacity];
+  }
+  *rb = new_rb;
+  return new_rb->size;
+}
+
+int ringbuf_get_capacity(struct ringbuf_impl *rb) { return rb->capacity; }
