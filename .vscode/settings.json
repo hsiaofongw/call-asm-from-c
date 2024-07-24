@@ -15,6 +15,9 @@
     "array": "c",
     "string_view": "c",
     "initializer_list": "c",
-    "utility": "c"
+    "utility": "c",
+    "blob.h": "c",
+    "err.h": "c",
+    "alloc.h": "c"
   }
 }
