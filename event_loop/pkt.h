@@ -15,7 +15,23 @@ enum PktType { PktTyMsg = 0 };
 enum PktHeaderField {
   PktFieldSender = 0,
   PktFieldReceiver = 1,
-  PktFieldContentLength = 2
+  PktFieldContentLength = 2,
+};
+
+#define MAX_HEADER_VALUE_SIZE ((0x1UL) << 10)
+
+enum ErrorReason {
+  // 内存分配失败
+  ErrAllocaFailed = 1,
+
+  // 不支持的字段
+  ErrNonSupportedField = 2,
+
+  // 值太大
+  ErrSizeTooLarge = 3,
+
+  // Buffer太小。有可能不能一次性放下要读取的字段的值，造成内存越界读取或者数据截断）。
+  ErrTooSmallBuffer = 4
 };
 
 // 创建一个全新的 packet，使用该函数创建的 packet 用完后要通过 pkt_free
@@ -35,16 +51,19 @@ pkt *pkt_create(int type, void *(*allocator)(const int, void *closure),
 // allocator，那么，需要调用者提供匹配的 deleter。使用 NULL 作为 deleter 如果在
 // pkt_create 中指定了使用默认 allocator。
 // 当 deleter 为 NULL（或默认 deleter 时），deleter_closure 不会被提领。
-void pkt_free(pkt **p, void (*deleter)(pkt *p, void *closure),
+void pkt_free(pkt **p, void (*deleter)(void *p, void *closure),
               void *deleter_closure);
 
 // 对 key_idx 指代的 header 字段进行设置，值为 (buf, length) 指代的 blob。
 // key_idx 的取值详见 enum PktHeaderField。
-void pkt_header_set_value(pkt *p, int key_idx, char *buf, int length);
+// 返回非零数表示失败（例如不支持的字段，或者值的格式不合法，或者 length
+// 过大。） length 不得超过 MAX_HEADER_VALUE_SIZE.
+int pkt_header_set_value(pkt *p, int key_idx, char *buf, int length);
 
 // 读取 key_idx 指代的 header 字段的值，存放到（buf,
 // legnth）区域中，返回值的实际 size。
 // key_idx 的取值详见 enum PktHeaderField。
+// length 表示 buf 支持存放的容量，不得小于 MAX_HEADER_VALUE_SIZE.
 int pkt_header_get_value(pkt *p, int key_idx, char *buf, int length);
 
 // 对 packet 的 body 进行写入
