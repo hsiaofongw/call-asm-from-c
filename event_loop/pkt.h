@@ -40,7 +40,10 @@ enum ErrorReason {
   // 超过了 body size 极限大小，请减小写入的 chunk
   // 大小（或者考虑将消息拆分为多个 packet，todo：packet reassemble 待实现）
   // body 最大不能超过 MAX_BODY_SIZE
-  ErrBodyTooLarge = 6
+  ErrBodyTooLarge = 6,
+
+  // 请先清空 serialize_ctx（例如通过反复调用 receive chunk）
+  ErrSerializeCtxBusy = 7
 };
 
 // 创建一个全新的 packet，使用该函数创建的 packet 用完后要通过 pkt_free
@@ -74,7 +77,7 @@ int pkt_header_set_value(pkt *p, int key_idx, char *buf, int length);
 // legnth）区域中，返回值的实际 size。
 // key_idx 的取值详见 enum PktHeaderField。
 // length 表示 buf 支持存放的容量，不得小于 MAX_HEADER_VALUE_SIZE.
-int pkt_header_get_value(pkt *p, int key_idx, char *buf, int length);
+int pkt_header_get_value(pkt *p, int key_idx, char *buf, int length, int *size);
 
 // 对 packet 的 body 进行写入
 int pkt_body_send_chunk(pkt *p, char *buf, int length);
@@ -85,14 +88,23 @@ int pkt_body_send_chunk(pkt *p, char *buf, int length);
 int pkt_body_receive_chunk(pkt *p, char *buf, int length, int *chunk_size,
                            int offset);
 
+// 创建一个 serialize_ctx 对象
+serialize_ctx *serialize_ctx_create();
+
 // 把一个 packet 发送到 serialize context，出错时返回非 0 值。
+// 在通过调用 serialize_ctx_receive_chunk 把全部 chunk
+// 取出来之前，你不能再次调用 serialze_ctx_send_pkt.
 int serialze_ctx_send_pkt(serialize_ctx *s_ctx, pkt *p);
 
 // 从一个 serialize context 取出 chunk，出错时返回负值，返回 0 表示没有更多
 // chunk（所有 chunk 已取出），返回正数表示 chunk 的大小。 chunk
 // 的存放地址（buf）和最大写入大小（size）由 caller
 // 提供（可以在栈上分配一个非常小的 buffer 用来存放 chunk，然后多次调用）。
-int serialize_ctx_receive_chunk(serialize_ctx *s_ctx, char *buf, int size);
+int serialize_ctx_receive_chunk(serialize_ctx *s_ctx, char *buf, int length,
+                                int *size, int offset);
+
+// 释放一个 serialize_ctx 对象
+void serialize_ctx_free(serialize_ctx *);
 
 // 把一个 chunk 发送到 parse context，出错时返回负数（例如，chunk
 // 超过大小限制或者格式错误），有结果可取出时，返回正数。
