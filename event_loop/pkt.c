@@ -173,17 +173,23 @@ int pkt_body_receive_chunk(struct pkt_impl *p, char *buf, int length,
 }
 
 struct serialize_ctx_impl {
-  char *buf;
-  int size;
-  int capacity;
+  struct blob_t *buf;
+  struct alloc_t *mem;
 };
 
-struct serialize_ctx_impl *serialize_ctx_create() {
-  struct serialize_ctx_impl *c = malloc(sizeof(struct serialize_ctx_impl));
-  c->capacity = PAGE_SIZE;
-  c->buf = malloc(c->capacity);
-  c->size = 0;
+struct serialize_ctx_impl *serialize_ctx_create(struct alloc_t *allocator) {
+  struct serialize_ctx_impl *c =
+      allocator->alloc(sizeof(struct serialize_ctx_impl), allocator->closure);
+  c->buf = blob_create(PAGE_SIZE, allocator);
+  c->mem = allocator;
   return c;
+}
+
+void serialize_ctx_free(struct serialize_ctx_impl *s_ctx) {
+  void (*deleter)(void *addr, void *closure) = s_ctx->mem->deleter;
+  void *closure = s_ctx->mem->closure;
+  blob_free(s_ctx->buf);
+  deleter(s_ctx, closure);
 }
 
 int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
