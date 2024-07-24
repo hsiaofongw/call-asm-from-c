@@ -53,6 +53,9 @@ int pkt_create(struct pkt_impl **result, int type, struct alloc_t *allocator) {
   pkt->sender_length = 0;
   pkt->receiver_length = 0;
   pkt->body = blob_create(PAGE_SIZE, used_allocator);
+  if (!pkt->body || pkt->body == NULL) {
+    return ErrAllocaFailed;
+  }
   pkt->receiver = NULL;
   pkt->sender = NULL;
   *result = pkt;
@@ -74,7 +77,7 @@ void pkt_free(struct pkt_impl **p) {
   }
 
   if (pkt->body) {
-    used_deleter(pkt->body, deleter_closure);
+    blob_free(pkt->body);
   }
 
   used_deleter(pkt, deleter_closure);
