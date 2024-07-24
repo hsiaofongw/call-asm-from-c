@@ -29,10 +29,7 @@ enum PktHeaderField {
 // 本身以及子资源的资源分配。
 // 当 allocator 为 NULL（或默认 allocator 时），allocator_closure 不会被提领。
 // type 的取值详见 enum PktType.
-int pkt_create(pkt **result, int type,
-               void *(*alloca)(const int size, void *closure),
-               void *alloca_closure, void (*deleter)(void *obj, void *payload),
-               void *deleter_closure);
+int pkt_create(pkt **result, int type, struct alloc_t *allocator);
 
 // 对 p 指向的 pkt 指针指向的 pkt 内存区域进行释放，释放后对 p 指向的 pkt 指针置
 // NULL。
