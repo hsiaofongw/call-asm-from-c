@@ -28,16 +28,19 @@ enum ErrorReason {
   // 不支持的字段
   ErrNonSupportedField = 2,
 
+  // 不支持的消息类型
+  ErrNonSupportedMsgType = 3,
+
   // 值太大
-  ErrSizeTooLarge = 3,
+  ErrSizeTooLarge = 4,
 
   // Buffer太小。有可能不能一次性放下要读取的字段的值，造成内存越界读取或者数据截断）。
-  ErrTooSmallBuffer = 4,
+  ErrTooSmallBuffer = 5,
 
   // 超过了 body size 极限大小，请减小写入的 chunk
   // 大小（或者考虑将消息拆分为多个 packet，todo：packet reassemble 待实现）
   // body 最大不能超过 MAX_BODY_SIZE
-  ErrBodyTooLarge = 5
+  ErrBodyTooLarge = 6
 };
 
 // 创建一个全新的 packet，使用该函数创建的 packet 用完后要通过 pkt_free
@@ -48,9 +51,10 @@ enum ErrorReason {
 // 本身以及子资源的资源分配。
 // 当 allocator 为 NULL（或默认 allocator 时），allocator_closure 不会被提领。
 // type 的取值详见 enum PktType.
-pkt *pkt_create(int type, void *(*alloca)(const int size, void *closure),
-                void *alloca_closure, void (*deleter)(void *obj, void *payload),
-                void *deleter_closure);
+int pkt_create(pkt **result, int type,
+               void *(*alloca)(const int size, void *closure),
+               void *alloca_closure, void (*deleter)(void *obj, void *payload),
+               void *deleter_closure);
 
 // 对 p 指向的 pkt 指针指向的 pkt 内存区域进行释放，释放后对 p 指向的 pkt 指针置
 // NULL。

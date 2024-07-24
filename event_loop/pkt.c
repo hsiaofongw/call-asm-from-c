@@ -39,15 +39,19 @@ void *pkt_default_alloca(const int size, void *closure) { return malloc(size); }
 
 void pkt_default_deleter(void *p, void *closure) { free(p); }
 
-struct pkt_impl *pkt_create(int type,
-                            void *(*alloca)(const int size, void *closure),
-                            void *alloca_closure,
-                            void (*deleter)(void *obj, void *payload),
-                            void *deleter_closure) {
+int pkt_create(struct pkt_impl **result, int type,
+               void *(*alloca)(const int size, void *closure),
+               void *alloca_closure, void (*deleter)(void *obj, void *payload),
+               void *deleter_closure) {
   struct pkt_impl *pkt;
   void *(*used_alloc)(const int, void *) =
       alloca == NULL ? pkt_default_alloca : alloca;
   pkt = used_alloc(sizeof(struct pkt_impl), alloca_closure);
+
+  if (type != PktTyMsg) {
+    return ErrNonSupportedMsgType;
+  }
+
   pkt->alloc = used_alloc;
   pkt->alloca_closure = alloca_closure;
   pkt->sender_length = 0;
@@ -62,7 +66,9 @@ struct pkt_impl *pkt_create(int type,
     pkt->deleter = pkt_default_deleter;
   }
   pkt->deleter_closure = deleter_closure;
-  return pkt;
+  *result = pkt;
+
+  return 0;
 }
 
 void pkt_free(struct pkt_impl **p) {
