@@ -39,6 +39,8 @@ int pkt_create(pkt **result, int type, struct alloc_t *allocator);
 // 当 deleter 为 NULL（或默认 deleter 时），deleter_closure 不会被提领。
 void pkt_free(pkt **p);
 
+int pkt_get_type(pkt *);
+
 // 对 key_idx 指代的 header 字段进行设置，值为 (buf, length) 指代的 blob。
 // key_idx 的取值详见 enum PktHeaderField。
 // 返回非零数表示失败（例如不支持的字段，或者值的格式不合法，或者 length
@@ -61,7 +63,7 @@ int pkt_body_receive_chunk(pkt *p, char *buf, int length, int *chunk_size,
                            int offset);
 
 // 创建一个 serialize_ctx 对象
-serialize_ctx *serialize_ctx_create();
+serialize_ctx *serialize_ctx_create(struct alloc_t *allocator);
 
 // 把一个 packet 发送到 serialize context，出错时返回非 0 值。
 // 在通过调用 serialize_ctx_receive_chunk 把全部 chunk

@@ -1,5 +1,6 @@
 #include "pkt.h"
 
+#include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,6 +21,8 @@ struct pkt_impl {
   struct blob_t *body;
   struct alloc_t *mem;
 };
+
+char pkt_magic_words[] = {0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4};
 
 // align x to multiples of 2^m
 int align_to(int x, int m) {
@@ -83,6 +86,8 @@ void pkt_free(struct pkt_impl **p) {
   used_deleter(pkt, deleter_closure);
   *p = NULL;
 }
+
+int pkt_get_type(struct pkt_impl *pkt) { return pkt->type; }
 
 int pkt_set_sender(struct pkt_impl *p, char *buf, int length) {
   if (p->sender) {
@@ -193,5 +198,45 @@ void serialize_ctx_free(struct serialize_ctx_impl *s_ctx) {
 }
 
 int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
-  char temp[MAX_HEADER_VALUE_SIZE];
+  int status;
+  char *temp;
+
+  // magic words
+  blob_send_chunk(s_ctx->buf, pkt_magic_words, sizeof(pkt_magic_words));
+
+  // type
+  int type = htonl(pkt_get_type(p));
+  blob_send_chunk(s_ctx->buf, &(type), sizeof(type));
+
+  // sender
+  status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE, &temp);
+  if (status != 0) {
+    return status;
+  }
+  int sender_size;
+  pkt_header_get_value(p, PktFieldSender, temp, MAX_HEADER_VALUE_SIZE,
+                       &sender_size);
+  blob_seal_buf_as_written(s_ctx->buf, sender_size);
+
+  // receiver
+  status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE, &temp);
+  if (status != 0) {
+    return status;
+  }
+  int receiver_size;
+  pkt_header_get_value(p, PktFieldReceiver, temp, MAX_HEADER_VALUE_SIZE,
+                       &receiver_size);
+  blob_seal_buf_as_written(s_ctx->buf, receiver_size);
+
+  // content-length
+  status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE, &temp);
+  if (status != 0) {
+    return status;
+  }
+  int sizeof_contentlength_field;
+  pkt_header_get_value(p, PktFieldContentLength, temp, MAX_HEADER_VALUE_SIZE,
+                       &sizeof_contentlength_field);
+  blob_seal_buf_as_written(s_ctx->buf, sizeof_contentlength_field);
+
+  // todo: body
 }

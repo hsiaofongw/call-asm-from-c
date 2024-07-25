@@ -23,7 +23,10 @@ enum ErrorReason {
   ErrBodyTooLarge = 6,
 
   // 请先清空 serialize_ctx（例如通过反复调用 receive chunk）
-  ErrSerializeCtxBusy = 7
+  ErrSerializeCtxBusy = 7,
+
+  // 容量不足
+  ErrNoEnoughCapacity = 8
 };
 
 #endif

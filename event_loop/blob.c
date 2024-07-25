@@ -64,3 +64,24 @@ int blob_receive_chunk(char *dst, int dst_len, int *chunk_size,
   memcpy(dst, &src[src_offset], *chunk_size);
   return 0;
 }
+
+int blob_pre_allocate_buffer(struct blob_t *b, int requested_buf_size,
+                             char **buf_out) {
+  int status = blob_upscale_on_demand(b, requested_buf_size);
+  if (status != 0) {
+    return status;
+  }
+
+  *buf_out = &b->buf[b->size];
+
+  return 0;
+}
+
+int blob_seal_buf_as_written(struct blob_t *b, int size) {
+  b->size += size;
+  if (b->size > b->capacity) {
+    b->size = b->capacity;
+    return ErrNoEnoughCapacity;
+  }
+  return 0;
+}
