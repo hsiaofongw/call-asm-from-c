@@ -77,7 +77,7 @@ int blob_pre_allocate_buffer(struct blob_t *b, int requested_buf_size,
   return 0;
 }
 
-int blob_seal_buf_as_written(struct blob_t *b, int size) {
+int blob_deem_buf_written(struct blob_t *b, int size) {
   b->size += size;
   if (b->size > b->capacity) {
     b->size = b->capacity;

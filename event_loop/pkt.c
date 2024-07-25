@@ -216,7 +216,7 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   int sender_size;
   pkt_header_get_value(p, PktFieldSender, temp, MAX_HEADER_VALUE_SIZE,
                        &sender_size);
-  blob_seal_buf_as_written(s_ctx->buf, sender_size);
+  blob_deem_buf_written(s_ctx->buf, sender_size);
 
   // receiver
   status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE, &temp);
@@ -226,17 +226,42 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   int receiver_size;
   pkt_header_get_value(p, PktFieldReceiver, temp, MAX_HEADER_VALUE_SIZE,
                        &receiver_size);
-  blob_seal_buf_as_written(s_ctx->buf, receiver_size);
+  blob_deem_buf_written(s_ctx->buf, receiver_size);
 
   // content-length
-  status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE, &temp);
+  int *content_length_ptr;
+  status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE,
+                                    (void *)&content_length_ptr);
   if (status != 0) {
     return status;
   }
   int sizeof_contentlength_field;
-  pkt_header_get_value(p, PktFieldContentLength, temp, MAX_HEADER_VALUE_SIZE,
-                       &sizeof_contentlength_field);
-  blob_seal_buf_as_written(s_ctx->buf, sizeof_contentlength_field);
+  pkt_header_get_value(p, PktFieldContentLength, (void *)content_length_ptr,
+                       MAX_HEADER_VALUE_SIZE, &sizeof_contentlength_field);
+  blob_deem_buf_written(s_ctx->buf, sizeof_contentlength_field);
 
-  // todo: body
+  status = blob_pre_allocate_buffer(s_ctx->buf, *content_length_ptr, &temp);
+  if (status != 0) {
+    return status;
+  }
+
+  int offset = 0;
+  int remain_cap = *content_length_ptr;
+  while (1) {
+    int chunk_size = 0;
+    status = pkt_body_receive_chunk(p, temp, remain_cap, &chunk_size, offset);
+    if (chunk_size > 0) {
+      blob_deem_buf_written(s_ctx->buf, chunk_size);
+    }
+    if (status == 0) {
+      // eof
+      break;
+    }
+    if (status < 0) {
+      // error
+      return status;
+    }
+    offset += chunk_size;
+    remain_cap -= chunk_size;
+  }
 }
