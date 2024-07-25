@@ -5,8 +5,7 @@
 
 #define HASHTAB_INIT_CAPACITY (((int)1) << 16)
 
-struct hashtab_impl;
-typedef struct hashtab_impl *hashtab;
+typedef void *hashtab;
 
 hashtab *hashtab_create(int (*hash_func)(char *buf, int size),
                         struct alloc_t *allocator);
