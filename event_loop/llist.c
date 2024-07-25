@@ -12,7 +12,9 @@ struct llist_impl_t {
 struct llist_impl_t *list_create() { return NULL; }
 
 struct llist_impl_t *list_elem_create() {
-  return malloc(sizeof(struct llist_impl_t));
+  struct llist_impl_t *elem = malloc(sizeof(struct llist_impl_t));
+  elem->next = NULL;
+  return elem;
 }
 
 void list_elem_free(struct llist_impl_t *elem,
