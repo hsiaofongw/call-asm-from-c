@@ -109,6 +109,14 @@ void ht_entry_free(struct ht_entry *hte) {
   allocator->deleter(hte, allocator->closure);
 }
 
+void ht_entry_list_free(struct ht_entry *hte) {
+  while (hte != NULL) {
+    struct ht_entry *next = hte->next;
+    ht_entry_free(hte);
+    hte = next;
+  }
+}
+
 int hashtab_set(struct hashtab_impl *htab, char *key_buf, int key_size,
                 void *data) {
   int idx = htab->hash_func(key_buf, key_size);
@@ -123,4 +131,15 @@ int hashtab_set(struct hashtab_impl *htab, char *key_buf, int key_size,
   return entry == NULL ? 0 : 1;
 }
 
-void hashtab_free(struct hashtab_impl *htab) {}
+void hashtab_free(struct hashtab_impl *htab) {
+  for (int i = 0; i < htab->capacity; ++i) {
+    if (htab->entries[i] == NULL) {
+      continue;
+    }
+    ht_entry_list_free(htab->entries[i]);
+  }
+  struct alloc_t *allocator = htab->mem;
+  allocator->deleter(htab, allocator->closure);
+}
+
+int hash_func_int_identity(char *buf, int size) { return *((int *)buf); }
