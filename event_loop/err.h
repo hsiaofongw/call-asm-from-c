@@ -48,4 +48,7 @@ enum ErrorReason {
   ErrExtractParsedPacketFirst = 14,
 };
 
+// 获取错误代码对应的 null-terminated 描述字符串。
+char *err_get_error_code_str(enum ErrorReason code);
+
 #endif
