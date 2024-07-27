@@ -51,6 +51,8 @@ void pkt_free(pkt **p);
 int pkt_set_type(pkt *p, int type);
 int pkt_get_type(pkt *);
 
+char *pkt_type_2_str(int type);
+
 // 对 key_idx 指代的 header 字段进行设置，值为 (buf, length) 指代的 blob。
 // key_idx 的取值详见 enum PktHeaderField。
 // 返回非零数表示失败（例如不支持的字段，或者值的格式不合法，或者 length

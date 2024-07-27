@@ -79,6 +79,15 @@ int pkt_set_type(struct pkt_impl *pkt, int type) {
   return 0;
 }
 
+char *pkt_type_2_str(int type) {
+  switch ((enum PktType)type) {
+    case PktTyMsg:
+      return "PktTyMsg";
+    default:
+      return "Unknown";
+  }
+}
+
 int pkt_set_sender(struct pkt_impl *p, char *buf, int length) {
   if (p->sender) {
     p->mem->deleter(p->sender, p->mem->closure);
