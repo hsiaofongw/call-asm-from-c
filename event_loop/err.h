@@ -26,7 +26,20 @@ enum ErrorReason {
   ErrSerializeCtxBusy = 7,
 
   // 容量不足
-  ErrNoEnoughCapacity = 8
+  ErrNoEnoughCapacity = 8,
+
+  // 封包太大
+  ErrPacketTooBig = 9,
+
+  // MagicWords 不匹配
+  ErrMagicWordsMisMatch = 10,
+
+  // 没有数据可用于解析，请确保提供的 chunk buffer 非空（或者 parse context
+  // 内部的 buffer 非空）
+  ErrNoDataToParse = 11,
+
+  // 需要更多数据
+  ErrNeedMore = 12,
 };
 
 #endif

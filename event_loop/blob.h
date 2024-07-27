@@ -28,4 +28,6 @@ int blob_pre_allocate_buffer(struct blob_t *b, int requested_buf_size,
 
 int blob_deem_buf_written(struct blob_t *b, int size);
 
+int blob_get_size(struct blob_t *b);
+
 #endif

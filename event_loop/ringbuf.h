@@ -35,10 +35,10 @@ int ringbuf_transfer(ringbuf *dst, ringbuf *src, const int len);
 void ringbuf_clear(ringbuf *rb);
 
 // 判断一个 ringbuf 是否为空。
-int ringbuf_is_empty(ringbuf *rb);
+int ringbuf_is_empty(ringbuf *);
 
 // 获取剩余容量
-int ringbuf_get_remaining_capacity(ringbuf *rb);
+int ringbuf_get_remaining_capacity(ringbuf *);
 
 // 当实际容量不及预期容量时进行扩容（i.e.
 // 条件扩容），返回实际容量，如果扩容了，返回扩容后的实际容量（不一定等于
@@ -46,6 +46,9 @@ int ringbuf_get_remaining_capacity(ringbuf *rb);
 int ringbuf_upscale_if_needed(ringbuf **rb, const int expected_size);
 
 // 获取 ringbuf 的容量（不是 size）
-int ringbuf_get_capacity(ringbuf *rb);
+int ringbuf_get_capacity(ringbuf *);
+
+// 获取 ringbuf 当前 size
+int ringbuf_get_size(ringbuf *);
 
 #endif

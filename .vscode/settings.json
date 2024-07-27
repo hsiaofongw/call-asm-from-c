@@ -18,6 +18,8 @@
     "utility": "c",
     "blob.h": "c",
     "err.h": "c",
-    "alloc.h": "c"
+    "alloc.h": "c",
+    "stdlib.h": "c",
+    "ringbuf.h": "c"
   }
 }

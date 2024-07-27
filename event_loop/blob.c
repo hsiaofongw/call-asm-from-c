@@ -61,7 +61,7 @@ int blob_receive_chunk(char *dst, int dst_len, int *chunk_size,
     return 0;
   }
 
-  memcpy(dst, &src[src_offset], *chunk_size);
+  memcpy(dst, &src->buf[src_offset], *chunk_size);
   return 0;
 }
 

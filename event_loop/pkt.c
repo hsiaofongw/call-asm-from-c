@@ -7,6 +7,7 @@
 #include "alloc.h"
 #include "blob.h"
 #include "err.h"
+#include "ringbuf.h"
 
 struct pkt_impl {
   // PktType
@@ -269,20 +270,80 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
 enum PktParseState {
   EXPECT_MAGICWORDS,
   EXPECT_TYPE,
+  EXPECT_SENDER_LENGTH,
   EXPECT_SENDER,
+  EXPECT_RECEIVER_LENGTH,
   EXPECT_RECEIVER,
-  EXPECT_CONTENTLENGTH,
+  EXPECT_CONTENT_LENGTH,
   EXPECT_BODY
 };
 
 struct parse_ctx_impl {
   struct alloc_t *mem;
   enum PktParseState state;
+  ringbuf *buf;
 };
 
-int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf, int size) {
-  char *head = buf, *end = &buf[size];
-  while (head < end) {
-    switch (p_ctx->state) { case EXPECT_MAGICWORDS: }
+int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
+                         const int buf_size, int *size_accepted,
+                         int *need_more) {
+  *size_accepted = 0;
+
+  if (buf_size + ringbuf_get_size(p_ctx->buf) == 0) {
+    return ErrNoDataToParse;
+  }
+
+  char *end = &buf[buf_size];
+  char header_buf[MAX_HEADER_VALUE_SIZE];
+
+  while (1) {
+    int remain_cap = ringbuf_get_remaining_capacity(p_ctx->buf);
+    int remain_buf = end - buf;
+    if (remain_cap > 0 && remain_buf > 0) {
+      int ingest_size = remain_buf < remain_cap ? remain_buf : remain_cap;
+      ringbuf_send_chunk(p_ctx->buf, buf, ingest_size);
+      buf = &buf[ingest_size];
+      *size_accepted += ingest_size;
+    }
+
+    if (ringbuf_is_empty(p_ctx->buf)) {
+      break;
+    }
+
+    switch (p_ctx->state) {
+      case EXPECT_MAGICWORDS:
+        const int size_of_magicwords = sizeof(pkt_magic_words);
+        const int intern_buf_size = ringbuf_get_size(p_ctx->buf);
+        *need_more = size_of_magicwords - intern_buf_size;
+        if (*need_more > 0) {
+          return ErrNeedMore;
+        }
+
+        ringbuf_receive_chunk(header_buf, size_of_magicwords, p_ctx->buf);
+        if (memcmp(pkt_magic_words, header_buf, size_of_magicwords) == 0) {
+          p_ctx->state = EXPECT_TYPE;
+          continue;
+        }
+        return ErrMagicWordsMisMatch;
+      case EXPECT_TYPE:
+        const int size_of_type = sizeof(((struct pkt_impl *)0)->type);
+        const int intern_buf_size = ringbuf_get_size(p_ctx->buf);
+        *need_more = size_of_type - intern_buf_size;
+        if (*need_more > 0) {
+          return ErrNeedMore;
+        }
+
+        ringbuf_receive_chunk(header_buf, size_of_type, p_ctx->buf);
+        int *received_type = (void *)header_buf;
+        *received_type = ntohl(*received_type);
+
+        int valid_type = PktTyMsg;
+        if (*received_type != valid_type) {
+          return ErrNonSupportedMsgType;
+        }
+        p_ctx->state = EXPECT_SENDER_LENGTH;
+        continue;
+      case EXPECT_SENDER_LENGTH:
+    }
   }
 }
