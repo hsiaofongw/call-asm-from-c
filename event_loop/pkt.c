@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "alloc.h"
 #include "blob.h"
 #include "err.h"
 #include "ringbuf.h"
@@ -139,9 +138,8 @@ int pkt_header_get_value(struct pkt_impl *p, int key_idx, char *buf, int length,
       *size = p->receiver_length;
       break;
     case PktFieldContentLength:
-      int *size_out = (void *)buf;
-      *size_out = p->body->size;
-      *size = sizeof(p->body->size);
+      ((int *)buf)[0] = p->body->size;
+      size[0] = sizeof(p->body->size);
       break;
     default:
       return ErrNonSupportedField;
@@ -192,7 +190,7 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
 
   // type
   int type = htonl(pkt_get_type(p));
-  blob_send_chunk(s_ctx->buf, &(type), sizeof(type));
+  blob_send_chunk(s_ctx->buf, (char *)&type, sizeof(type));
 
   // senderlen, sender, receiverlen, receiver.
   int sender_size, receiver_size;

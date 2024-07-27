@@ -1,11 +1,13 @@
+#include "alloc.h"
+
 #ifndef MY_PKT
 #define MY_PKT
 
 struct pkt_impl;
 typedef struct pkt_impl pkt;
 
-struct serialze_ctx_impl;
-typedef struct serialze_ctx_impl serialize_ctx;
+struct serialize_ctx_impl;
+typedef struct serialize_ctx_impl serialize_ctx;
 
 struct parse_ctx_impl;
 typedef struct parse_ctx_impl parse_ctx;

@@ -13,6 +13,12 @@ err.o: err.c
 blob.o: blob.c
 	clang-18 -O3 -flto -c -o $@ $^
 
+hash.o: hash.c
+	clang-18 -O3 -flto -c -o $@ $^
+
+pkt.o: pkt.c
+	clang-18 -O3 -flto -c -o $@ $^
+
 chat_room: chat_room.c llist.c ringbuf.c util.c
 	clang-18 -O3 -flto -o $@ $^ $(shell pkg-config --cflags --libs libevent)
 
