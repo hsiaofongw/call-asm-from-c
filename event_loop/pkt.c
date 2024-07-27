@@ -209,25 +209,30 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   int type = htonl(pkt_get_type(p));
   blob_send_chunk(s_ctx->buf, &(type), sizeof(type));
 
-  // sender
-  status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE, &temp);
-  if (status != 0) {
-    return status;
-  }
-  int sender_size;
-  pkt_header_get_value(p, PktFieldSender, temp, MAX_HEADER_VALUE_SIZE,
-                       &sender_size);
-  blob_deem_buf_written(s_ctx->buf, sender_size);
-
-  // receiver
-  status = blob_pre_allocate_buffer(s_ctx->buf, MAX_HEADER_VALUE_SIZE, &temp);
-  if (status != 0) {
-    return status;
-  }
-  int receiver_size;
-  pkt_header_get_value(p, PktFieldReceiver, temp, MAX_HEADER_VALUE_SIZE,
+  // senderlen, sender, receiverlen, receiver.
+  int sender_size, receiver_size;
+  char sender[MAX_HEADER_VALUE_SIZE];
+  char receiver[MAX_HEADER_VALUE_SIZE];
+  pkt_header_get_value(p, PktFieldSender, sender, sizeof(sender), &sender_size);
+  pkt_header_get_value(p, PktFieldReceiver, receiver, sizeof(receiver),
                        &receiver_size);
-  blob_deem_buf_written(s_ctx->buf, receiver_size);
+
+  int size_of_name_length = sizeof(p->sender_length);
+  status = blob_pre_allocate_buffer(
+      s_ctx->buf, 2 * size_of_name_length + sender_size + receiver_size, &temp);
+  if (status != 0) {
+    return status;
+  }
+
+  memcpy(temp, &sender_size, size_of_name_length);
+  memcpy(&temp[size_of_name_length], sender, sender_size);
+  memcpy(&temp[size_of_name_length + sender_size], &receiver_size,
+         size_of_name_length);
+  memcpy(&temp[size_of_name_length + sender_size + size_of_name_length],
+         receiver, receiver_size);
+
+  blob_deem_buf_written(s_ctx->buf,
+                        2 * size_of_name_length + sender_size + receiver_size);
 
   // content-length
   int *content_length_ptr;
@@ -400,8 +405,23 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
           return ErrInvalidHeaderValue;
         }
         p_ctx->receiver_len = receiver_len;
-        p_ctx->state = EXPECT_SENDER;
+        p_ctx->state = EXPECT_RECEIVER;
         continue;
+      case EXPECT_RECEIVER:
+        *need_more = p_ctx->receiver_len - ringbuf_get_size(p_ctx->buf);
+        if (*need_more > 0) {
+          return ErrNeedMore;
+        }
+
+        ringbuf_receive_chunk(header_buf, p_ctx->receiver_len, p_ctx->buf);
+        int status = pkt_header_set_value(p_ctx->p, PktFieldReceiver,
+                                          header_buf, p_ctx->receiver_len);
+        if (status != 0) {
+          return status;
+        }
+        p_ctx->state = EXPECT_CONTENT_LENGTH;
+        continue;
+      case EXPECT_CONTENT_LENGTH:
     }
   }
 }
