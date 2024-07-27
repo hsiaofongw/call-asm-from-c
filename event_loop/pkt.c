@@ -292,6 +292,7 @@ struct parse_ctx_impl {
   int sender_len;
   int receiver_len;
   int content_len;
+  int content_len_needed;
 };
 
 int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
@@ -309,6 +310,7 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
 
   char *end = &buf[buf_size];
   char header_buf[MAX_HEADER_VALUE_SIZE];
+  char body_buf[PAGE_SIZE];
 
   while (1) {
     int remain_cap = ringbuf_get_remaining_capacity(p_ctx->buf);
@@ -435,6 +437,30 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
           return ErrBodyTooLarge;
         }
         p_ctx->content_len = content_len;
+        p_ctx->content_len_needed = content_len;
+        continue;
+      case EXPECT_BODY:
+        *need_more = p_ctx->content_len_needed - ringbuf_get_size(p_ctx->buf);
+        if (*need_more > 0) {
+          int cap = ringbuf_get_capacity(p_ctx->buf);
+          if (*need_more > cap) {
+            *need_more = cap;
+          }
+          return ErrNeedMore;
+        }
+
+        int body_chunk_size = ringbuf_receive_chunk(
+            body_buf, p_ctx->content_len_needed, p_ctx->buf);
+        p_ctx->content_len_needed -= body_chunk_size;
+        int status = pkt_body_send_chunk(p_ctx->p, body_buf, body_chunk_size);
+        if (status != 0) {
+          return status;
+        }
+        if (p_ctx->content_len_needed == 0) {
+          p_ctx->state = EXPECT_MAGICWORDS;
+          p_ctx->parsed = 1;
+          return 0;
+        }
         continue;
     }
   }
