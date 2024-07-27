@@ -253,6 +253,8 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
     offset += chunk_size;
     remain_cap -= chunk_size;
   }
+
+  return 0;
 }
 
 enum PktParseState {
@@ -281,6 +283,7 @@ struct parse_ctx_impl {
 int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
                          const int buf_size, int *size_accepted,
                          int *need_more) {
+  int status;
   *size_accepted = 0;
 
   if (p_ctx->parsed) {
@@ -291,9 +294,12 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
     return ErrNoDataToParse;
   }
 
+  struct pkt_impl *dummy_pkt = NULL;
   char *end = &buf[buf_size];
   char header_buf[MAX_HEADER_VALUE_SIZE];
   char body_buf[PAGE_SIZE];
+  const int size_of_magicwords = sizeof(pkt_magic_words);
+  const int size_of_type = sizeof(dummy_pkt->type);
 
   while (1) {
     int remain_cap = ringbuf_get_remaining_capacity(p_ctx->buf);
@@ -309,13 +315,9 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
       break;
     }
 
-    struct pkt_impl *dummy_pkt = NULL;
-
     switch (p_ctx->state) {
       case EXPECT_MAGICWORDS:
-        const int size_of_magicwords = sizeof(pkt_magic_words);
-        const int intern_buf_size = ringbuf_get_size(p_ctx->buf);
-        *need_more = size_of_magicwords - intern_buf_size;
+        *need_more = size_of_magicwords - ringbuf_get_size(p_ctx->buf);
         if (*need_more > 0) {
           return ErrNeedMore;
         }
@@ -327,9 +329,7 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
         }
         return ErrMagicWordsMisMatch;
       case EXPECT_TYPE:
-        const int size_of_type = sizeof(dummy_pkt->type);
-        const int intern_buf_size = ringbuf_get_size(p_ctx->buf);
-        *need_more = size_of_type - intern_buf_size;
+        *need_more = size_of_type - ringbuf_get_size(p_ctx->buf);
         if (*need_more > 0) {
           return ErrNeedMore;
         }
@@ -354,12 +354,10 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
 
         ringbuf_receive_chunk(header_buf, sizeof(dummy_pkt->sender_length),
                               p_ctx->buf);
-        int *sender_len = (void *)header_buf;
-        *sender_len = ntohl(*sender_len);
-        if (*sender_len > MAX_HEADER_VALUE_SIZE) {
+        p_ctx->sender_len = ntohl(*((int *)header_buf));
+        if (p_ctx->sender_len > MAX_HEADER_VALUE_SIZE) {
           return ErrInvalidHeaderValue;
         }
-        p_ctx->sender_len = *sender_len;
         p_ctx->state = EXPECT_SENDER;
         continue;
       case EXPECT_SENDER:
@@ -369,8 +367,8 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
         }
 
         ringbuf_receive_chunk(header_buf, p_ctx->sender_len, p_ctx->buf);
-        int status = pkt_header_set_value(p_ctx->p, PktFieldSender, header_buf,
-                                          p_ctx->sender_len);
+        status = pkt_header_set_value(p_ctx->p, PktFieldSender, header_buf,
+                                      p_ctx->sender_len);
         if (status != 0) {
           return status;
         }
@@ -385,11 +383,10 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
 
         ringbuf_receive_chunk(header_buf, sizeof(dummy_pkt->receiver_length),
                               p_ctx->buf);
-        int receiver_len = ntohl(*((int *)header_buf));
-        if (receiver_len > MAX_HEADER_VALUE_SIZE) {
+        p_ctx->receiver_len = ntohl(*((int *)header_buf));
+        if (p_ctx->receiver_len > MAX_HEADER_VALUE_SIZE) {
           return ErrInvalidHeaderValue;
         }
-        p_ctx->receiver_len = receiver_len;
         p_ctx->state = EXPECT_RECEIVER;
         continue;
       case EXPECT_RECEIVER:
@@ -399,8 +396,8 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
         }
 
         ringbuf_receive_chunk(header_buf, p_ctx->receiver_len, p_ctx->buf);
-        int status = pkt_header_set_value(p_ctx->p, PktFieldReceiver,
-                                          header_buf, p_ctx->receiver_len);
+        status = pkt_header_set_value(p_ctx->p, PktFieldReceiver, header_buf,
+                                      p_ctx->receiver_len);
         if (status != 0) {
           return status;
         }
@@ -415,12 +412,11 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
 
         ringbuf_receive_chunk(header_buf, sizeof(dummy_pkt->body->size),
                               p_ctx->buf);
-        int content_len = ntohl(*(int *)header_buf);
-        if (content_len > MAX_BODY_SIZE) {
+        p_ctx->content_len = ntohl(*(int *)header_buf);
+        if (p_ctx->content_len > MAX_BODY_SIZE) {
           return ErrBodyTooLarge;
         }
-        p_ctx->content_len = content_len;
-        p_ctx->content_len_needed = content_len;
+        p_ctx->content_len_needed = p_ctx->content_len;
         continue;
       case EXPECT_BODY:
         *need_more = p_ctx->content_len_needed - ringbuf_get_size(p_ctx->buf);
@@ -447,4 +443,6 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
         continue;
     }
   }
+
+  return 0;
 }

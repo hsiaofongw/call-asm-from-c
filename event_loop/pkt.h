@@ -99,8 +99,9 @@ void parse_ctx_free(parse_ctx *);
 
 // 把一个 chunk 发送到一个 parse_ctx 对象，通过 size_accept 指针写入接收了的
 // chunk 的 size，并不是多大的 chunk 都会照单全收。
+// 出错时，返回非 0 值。
 int parse_ctx_send_chunk(parse_ctx *p_ctx, char *buf, int size,
-                         int *size_accepted);
+                         int *size_accepted, int *need_more);
 
 // 从一个 parse_ctx 对象中取出一个 packet，
 // packet 用完后要调用 pkt_free 函数进行释放。
