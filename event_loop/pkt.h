@@ -46,6 +46,7 @@ int pkt_create(pkt **result, int type, struct alloc_t *allocator);
 // 当 deleter 为 NULL（或默认 deleter 时），deleter_closure 不会被提领。
 void pkt_free(pkt **p);
 
+int pkt_set_type(pkt *p, int type);
 int pkt_get_type(pkt *);
 
 // 对 key_idx 指代的 header 字段进行设置，值为 (buf, length) 指代的 blob。

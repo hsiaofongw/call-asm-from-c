@@ -40,6 +40,12 @@ enum ErrorReason {
 
   // 需要更多数据
   ErrNeedMore = 12,
+
+  // Header 字段值不合法，例如太长了
+  ErrInvalidHeaderValue = 13,
+
+  // 请先取出已解析的 packet
+  ErrExtractParsedPacketFirst = 14,
 };
 
 #endif

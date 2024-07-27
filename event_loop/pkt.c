@@ -282,12 +282,21 @@ struct parse_ctx_impl {
   struct alloc_t *mem;
   enum PktParseState state;
   ringbuf *buf;
+  pkt *p;
+  int parsed;
+  int sender_len;
+  int receiver_len;
+  int content_len;
 };
 
 int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
                          const int buf_size, int *size_accepted,
                          int *need_more) {
   *size_accepted = 0;
+
+  if (p_ctx->parsed) {
+    return ErrExtractParsedPacketFirst;
+  }
 
   if (buf_size + ringbuf_get_size(p_ctx->buf) == 0) {
     return ErrNoDataToParse;
@@ -310,6 +319,8 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
       break;
     }
 
+    struct pkt_impl *dummy_pkt = NULL;
+
     switch (p_ctx->state) {
       case EXPECT_MAGICWORDS:
         const int size_of_magicwords = sizeof(pkt_magic_words);
@@ -326,7 +337,7 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
         }
         return ErrMagicWordsMisMatch;
       case EXPECT_TYPE:
-        const int size_of_type = sizeof(((struct pkt_impl *)0)->type);
+        const int size_of_type = sizeof(dummy_pkt->type);
         const int intern_buf_size = ringbuf_get_size(p_ctx->buf);
         *need_more = size_of_type - intern_buf_size;
         if (*need_more > 0) {
@@ -341,9 +352,56 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
         if (*received_type != valid_type) {
           return ErrNonSupportedMsgType;
         }
+        pkt_set_type(p_ctx->p, *received_type);
         p_ctx->state = EXPECT_SENDER_LENGTH;
         continue;
       case EXPECT_SENDER_LENGTH:
+        *need_more =
+            sizeof(dummy_pkt->sender_length) - ringbuf_get_size(p_ctx->buf);
+        if (*need_more > 0) {
+          return ErrNeedMore;
+        }
+
+        ringbuf_receive_chunk(header_buf, sizeof(dummy_pkt->sender_length),
+                              p_ctx->buf);
+        int *sender_len = (void *)header_buf;
+        *sender_len = ntohl(*sender_len);
+        if (*sender_len > MAX_HEADER_VALUE_SIZE) {
+          return ErrInvalidHeaderValue;
+        }
+        p_ctx->sender_len = *sender_len;
+        p_ctx->state = EXPECT_SENDER;
+        continue;
+      case EXPECT_SENDER:
+        *need_more = p_ctx->sender_len - ringbuf_get_size(p_ctx->buf);
+        if (*need_more > 0) {
+          return ErrNeedMore;
+        }
+
+        ringbuf_receive_chunk(header_buf, p_ctx->sender_len, p_ctx->buf);
+        int status = pkt_header_set_value(p_ctx->p, PktFieldSender, header_buf,
+                                          p_ctx->sender_len);
+        if (status != 0) {
+          return status;
+        }
+        p_ctx->state = EXPECT_RECEIVER_LENGTH;
+        continue;
+      case EXPECT_RECEIVER_LENGTH:
+        *need_more =
+            sizeof(dummy_pkt->receiver_length) - ringbuf_get_size(p_ctx->buf);
+        if (*need_more > 0) {
+          return ErrNeedMore;
+        }
+
+        ringbuf_receive_chunk(header_buf, sizeof(dummy_pkt->receiver_length),
+                              p_ctx->buf);
+        int receiver_len = ntohl(*((int *)header_buf));
+        if (receiver_len > MAX_HEADER_VALUE_SIZE) {
+          return ErrInvalidHeaderValue;
+        }
+        p_ctx->receiver_len = receiver_len;
+        p_ctx->state = EXPECT_SENDER;
+        continue;
     }
   }
 }
