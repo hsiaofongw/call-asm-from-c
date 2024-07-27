@@ -422,6 +422,20 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
         p_ctx->state = EXPECT_CONTENT_LENGTH;
         continue;
       case EXPECT_CONTENT_LENGTH:
+        *need_more =
+            sizeof(dummy_pkt->body->size) - ringbuf_get_size(p_ctx->buf);
+        if (*need_more > 0) {
+          return ErrNeedMore;
+        }
+
+        ringbuf_receive_chunk(header_buf, sizeof(dummy_pkt->body->size),
+                              p_ctx->buf);
+        int content_len = ntohl(*(int *)header_buf);
+        if (content_len > MAX_BODY_SIZE) {
+          return ErrBodyTooLarge;
+        }
+        p_ctx->content_len = content_len;
+        continue;
     }
   }
 }
