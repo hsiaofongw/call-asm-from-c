@@ -265,3 +265,24 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
     remain_cap -= chunk_size;
   }
 }
+
+enum PktParseState {
+  EXPECT_MAGICWORDS,
+  EXPECT_TYPE,
+  EXPECT_SENDER,
+  EXPECT_RECEIVER,
+  EXPECT_CONTENTLENGTH,
+  EXPECT_BODY
+};
+
+struct parse_ctx_impl {
+  struct alloc_t *mem;
+  enum PktParseState state;
+};
+
+int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf, int size) {
+  char *head = buf, *end = &buf[size];
+  while (head < end) {
+    switch (p_ctx->state) { case EXPECT_MAGICWORDS: }
+  }
+}

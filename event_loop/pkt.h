@@ -80,15 +80,18 @@ int serialize_ctx_receive_chunk(serialize_ctx *s_ctx, char *buf, int length,
 // 释放一个 serialize_ctx 对象
 void serialize_ctx_free(serialize_ctx *);
 
-// 把一个 chunk 发送到 parse context，出错时返回负数（例如，chunk
-// 超过大小限制或者格式错误），有结果可取出时，返回正数。
+// 创建一个 parse_ctx 对象
+parse_ctx *parse_ctx_create(struct alloc_t *allocator);
+
+// 释放一个 parse_ctx 对象，
+// 注意：通过该 parse_ctx 对象解析出的 packet 不会被释放，需要手动释放。
+void parse_ctx_free(parse_ctx *);
+
+// 把一个 chunk 发送到一个 parse_ctx 对象
 int parse_ctx_send_chunk(parse_ctx *p_ctx, char *buf, int size);
 
-// 从 parse context 中取出一个 packet，返回 0 表示没有更多 packet 待取出，拿到的
-// packet 用完后要调用 parse_ctx_free_pkt 函数进行释放。
+// 从一个 parse_ctx 对象中取出一个 packet，
+// packet 用完后要调用 pkt_free 函数进行释放。
 int parse_ctx_receive_pkt(parse_ctx *p_ctx, pkt **p);
-
-// 释放一个之前从 parse_ctx_receive_pkt 得到的 packet。
-void parse_ctx_free_pkt(pkt *p);
 
 #endif
