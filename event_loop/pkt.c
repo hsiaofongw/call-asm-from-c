@@ -280,6 +280,54 @@ struct parse_ctx_impl {
   int content_len_needed;
 };
 
+int parse_ctx_create(struct parse_ctx_impl **p_ctx_out,
+                     struct alloc_t *allocator) {
+  *p_ctx_out =
+      allocator->alloc(sizeof(struct parse_ctx_impl), allocator->closure);
+  if (*p_ctx_out == NULL) {
+    return ErrAllocaFailed;
+  }
+  struct parse_ctx_impl *p_ctx = *p_ctx_out;
+  p_ctx->mem = allocator;
+  p_ctx->state = EXPECT_MAGICWORDS;
+  p_ctx->buf = ringbuf_create(MAX_PACKET_SIZE);
+  if (!p_ctx->buf) {
+    return ErrAllocaFailed;
+  }
+
+  int status = pkt_create(&(p_ctx->p), PktTyMsg, allocator);
+  if (status != 0) {
+    return status;
+  }
+
+  p_ctx->parsed = 0;
+  p_ctx->sender_len = 0;
+  p_ctx->receiver_len = 0;
+  p_ctx->content_len = 0;
+  p_ctx->content_len_needed = 0;
+
+  return 0;
+}
+
+void parse_ctx_free(struct parse_ctx_impl **p) {
+  if (!*p) {
+    return;
+  }
+  struct parse_ctx_impl *p_ctx = *p;
+
+  struct alloc_t *allocator = p_ctx->mem;
+  if (p_ctx->buf) {
+    ringbuf_free(p_ctx->buf);
+  }
+
+  if (p_ctx->p) {
+    pkt_free(&(p_ctx->p));
+  }
+
+  allocator->deleter(p_ctx, allocator->closure);
+  *p = NULL;
+}
+
 int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
                          const int buf_size, int *size_accepted,
                          int *need_more) {
@@ -445,4 +493,18 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
   }
 
   return 0;
+}
+
+int parse_ctx_receive_pkt(struct parse_ctx_impl *p_ctx, pkt **p) {
+  if (p_ctx->p && p_ctx->parsed) {
+    *p = p_ctx->p;
+    p_ctx->parsed = 0;
+    int status = pkt_create(&(p_ctx->p), PktTyMsg, p_ctx->mem);
+    if (status != 0) {
+      return status;
+    }
+    return 0;
+  }
+
+  return ErrParsingIsIncomplete;
 }

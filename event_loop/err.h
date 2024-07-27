@@ -46,6 +46,9 @@ enum ErrorReason {
 
   // 请先取出已解析的 packet
   ErrExtractParsedPacketFirst = 14,
+
+  // 解析未完成
+  ErrParsingIsIncomplete = 15,
 };
 
 // 获取错误代码对应的 null-terminated 描述字符串。

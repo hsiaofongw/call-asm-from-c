@@ -30,6 +30,8 @@ char *err_get_error_code_str(enum ErrorReason code) {
       return "ErrInvalidHeaderValue";
     case ErrExtractParsedPacketFirst:
       return "ErrExtractParsedPacketFirst";
+    case ErrParsingIsIncomplete:
+      return "ErrParsingIsIncomplete";
     default:
       return "ErrUnknownError";
   }

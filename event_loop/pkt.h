@@ -91,11 +91,11 @@ int serialize_ctx_receive_chunk(serialize_ctx *s_ctx, char *buf, int length,
 void serialize_ctx_free(serialize_ctx *);
 
 // 创建一个 parse_ctx 对象
-parse_ctx *parse_ctx_create(struct alloc_t *allocator);
+int parse_ctx_create(parse_ctx **p_ctx, struct alloc_t *allocator);
 
 // 释放一个 parse_ctx 对象，
 // 注意：通过该 parse_ctx 对象解析出的 packet 不会被释放，需要手动释放。
-void parse_ctx_free(parse_ctx *);
+void parse_ctx_free(parse_ctx **);
 
 // 把一个 chunk 发送到一个 parse_ctx 对象，通过 size_accept 指针写入接收了的
 // chunk 的 size，并不是多大的 chunk 都会照单全收。
