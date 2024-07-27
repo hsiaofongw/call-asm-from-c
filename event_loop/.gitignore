@@ -5,3 +5,4 @@ socket_mux
 chat_room
 chat_room_dbg
 *.o
+test

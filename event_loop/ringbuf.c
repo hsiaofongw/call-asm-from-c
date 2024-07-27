@@ -135,3 +135,5 @@ int ringbuf_upscale_if_needed(struct ringbuf_impl **rb,
 }
 
 int ringbuf_get_capacity(struct ringbuf_impl *rb) { return rb->capacity; }
+
+int ringbuf_get_size(ringbuf *rb) { return rb->size; }

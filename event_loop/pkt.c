@@ -26,9 +26,6 @@ char pkt_magic_words[] = {0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4};
 
 int pkt_create(struct pkt_impl **result, int type, struct alloc_t *allocator) {
   struct alloc_t *used_allocator = allocator;
-  if (used_allocator == NULL) {
-    used_allocator = &default_alloc;
-  }
 
   if (type != PktTyMsg) {
     return ErrNonSupportedMsgType;
@@ -73,6 +70,14 @@ void pkt_free(struct pkt_impl **p) {
 }
 
 int pkt_get_type(struct pkt_impl *pkt) { return pkt->type; }
+
+int pkt_set_type(struct pkt_impl *pkt, int type) {
+  if (type != PktTyMsg) {
+    return ErrNonSupportedMsgType;
+  }
+  pkt->type = type;
+  return 0;
+}
 
 int pkt_set_sender(struct pkt_impl *p, char *buf, int length) {
   if (p->sender) {

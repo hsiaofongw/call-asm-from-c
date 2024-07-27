@@ -1,6 +1,6 @@
 #include "err.h"
 
-char *err_get_error_code_str(enum ErrorReason code) {
+char *err_code_2_str(enum ErrorReason code) {
   switch (code) {
     case ErrAllocaFailed:
       return "ErrAllocaFailed";

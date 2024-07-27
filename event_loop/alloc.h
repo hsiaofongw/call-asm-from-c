@@ -14,11 +14,7 @@ struct alloc_t {
   void (*deleter)(void *addr, void *closure);
 };
 
-void *pkt_default_alloca(const int size, void *closure);
-
-void pkt_default_deleter(void *p, void *closure);
-
-struct alloc_t default_alloc;
+struct alloc_t *get_default_allocator();
 
 // 把 x 向上对齐到 2 的 m 次方。
 int align_to(int x, int m);

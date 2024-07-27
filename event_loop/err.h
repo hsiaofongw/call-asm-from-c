@@ -52,6 +52,6 @@ enum ErrorReason {
 };
 
 // 获取错误代码对应的 null-terminated 描述字符串。
-char *err_get_error_code_str(enum ErrorReason code);
+char *err_code_2_str(enum ErrorReason code);
 
 #endif

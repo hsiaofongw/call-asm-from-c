@@ -41,9 +41,6 @@ void hashtab_upscale(struct hashtab_impl *htab, int desired_capacity,
 
 hashtab *hashtab_create(int (*hash_func)(char *buf, int size),
                         struct alloc_t *allocator) {
-  if (allocator == NULL) {
-    allocator = &default_alloc;
-  }
   struct hashtab_impl *htab =
       allocator->alloc(sizeof(struct hashtab_impl), allocator->closure);
   htab->hash_func = hash_func;
