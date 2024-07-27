@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "err.h"
 #include "pkt.h"
@@ -43,6 +44,28 @@ int main() {
   }
   sbuf[receiver_size] = 0;
   fprintf(stderr, "Receiver: %s\n", sbuf);
+
+  int content_len = 1024;
+  status = pkt_header_set_value(p, PktFieldContentLength, (char *)&content_len,
+                                sizeof(content_len));
+  if (status != 0) {
+    fprintf(stderr, "Failed to set content-length: %s\n",
+            err_code_2_str(status));
+  }
+  int content_len_var_size;
+  status = pkt_header_get_value(p, PktFieldContentLength, sbuf, sizeof(sbuf),
+                                &content_len_var_size);
+  if (status != 0) {
+    fprintf(stderr, "Failed to get content-length: %s\n",
+            err_code_2_str(status));
+  }
+  int received_content_len;
+  if (content_len_var_size > sizeof(received_content_len)) {
+    fprintf(stderr, "Incorrect content-length var size: %d\n",
+            content_len_var_size);
+  }
+  memcpy(&received_content_len, sbuf, content_len_var_size);
+  fprintf(stderr, "Received content-length: %d\n", received_content_len);
 
   pkt_free(&p);
 
