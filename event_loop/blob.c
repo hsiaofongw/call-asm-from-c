@@ -1,6 +1,7 @@
 #include "blob.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "alloc.h"
 
@@ -26,8 +27,8 @@ int blob_upscale_on_demand(struct blob_t *blob, int addend) {
     return 0;
   }
 
-  int new_capacity = align(blob->size + addend);
-  int new_buf = blob->mem->alloc(new_capacity, blob->mem->closure);
+  int new_capacity = align_default(blob->size + addend);
+  char *new_buf = blob->mem->alloc(new_capacity, blob->mem->closure);
   if (!new_buf) {
     return ErrAllocaFailed;
   }

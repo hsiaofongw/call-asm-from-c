@@ -4,6 +4,15 @@ CFLAGS=-O3 -I$(MUSL_PREFIX)/include -std=c17
 
 all: fdset_demo socket_mux io_echo
 
+alloc.o: alloc.c
+	clang-18 -O3 -flto -c -o $@ $^
+
+err.o: err.c
+	clang-18 -O3 -flto -c -o $@ $^
+
+blob.o: blob.c
+	clang-18 -O3 -flto -c -o $@ $^
+
 chat_room: chat_room.c llist.c ringbuf.c util.c
 	clang-18 -O3 -flto -o $@ $^ $(shell pkg-config --cflags --libs libevent)
 
@@ -42,5 +51,6 @@ clean:
 	rm -f util.o
 	rm -f chat_room
 	rm -f chat_room_dbg
+	rm -f alloc.o
 
 build: fdset_demo

@@ -25,21 +25,6 @@ struct pkt_impl {
 
 char pkt_magic_words[] = {0x1, 0x2, 0x3, 0x4, 0x1, 0x2, 0x3, 0x4};
 
-// align x to multiples of 2^m
-int align_to(int x, int m) {
-  int mask = (((int)1) << m);
-  int rem = x & (mask - 1);
-  int result = x - rem;
-  return rem == 0 ? x - rem : x - rem + mask;
-}
-
-#define DEFAULT_ALIGN_M 4
-int align_default(int x) { return align_to(x, DEFAULT_ALIGN_M); }
-
-#define PAGE_SIZE_M 12
-#define PAGE_SIZE (((int)0x1) << PAGE_SIZE_M)
-int align_page(int x) { return align_to(x, PAGE_SIZE_M); }
-
 int pkt_create(struct pkt_impl **result, int type, struct alloc_t *allocator) {
   struct alloc_t *used_allocator = allocator;
   if (used_allocator == NULL) {
