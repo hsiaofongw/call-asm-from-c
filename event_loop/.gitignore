@@ -6,3 +6,5 @@ chat_room
 chat_room_dbg
 *.o
 test
+file1.bin
+file2.bin

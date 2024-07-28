@@ -1,6 +1,9 @@
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/param.h>
+#include <unistd.h>
 
 #include "err.h"
 #include "pkt.h"
@@ -109,17 +112,17 @@ int main() {
   fprintf(stderr, "Ready to receive: %d\n",
           serialize_ctx_is_ready_to_receive_chunk(s_ctx));
 
-  int chunk_size;
   offset = 0;
   while (1) {
+    int chunk_size;
     status = serialize_ctx_receive_chunk(
         &sbuf[offset], MAX(0, sizeof(sbuf) - offset), &chunk_size, s_ctx);
     if (status != 0) {
-      fprintf(stderr, "Failed to receive chunk from serialize_ctx: %s\n",
+      fprintf(stderr, "Failed to receive chunk from the serialize_ctx: %s\n",
               err_code_2_str(status));
       exit(1);
     }
-    fprintf(stderr, "Received %d bytes chunk from serialize_ctx.\n",
+    fprintf(stderr, "Received %d bytes chunk from the serialize_ctx.\n",
             chunk_size);
     if (chunk_size == 0) {
       fprintf(stderr, "All chunks extracted.\n");
@@ -129,10 +132,31 @@ int main() {
   }
 
   int packet_len = offset;
-  fprintf(stderr, "Dumping serialized blob (%d bytes) to stdout...\n",
+  fprintf(stderr, "Dumping serialized blob (%d bytes) to file1...\n",
           packet_len);
-  for (int i = 0; i < packet_len; ++i) {
-    fputc(sbuf[i], stdout);
+
+  char filename1[] = "./file1.bin";
+  int flags = 0;
+  flags |= O_RDWR;
+  flags |= O_CREAT;
+  int modes = 0;
+  modes |= S_IRUSR;
+  modes |= S_IWUSR;
+
+  int fd;
+  fd = open(filename1, flags, modes);
+  if (fd == -1) {
+    fprintf(stderr, "Failed to open file %s: %s\n", filename1, strerror(errno));
+    exit(1);
+  }
+  offset = 0;
+  while (offset < packet_len) {
+    int wbytes = write(fd, &sbuf[offset], MAX(0, packet_len - offset));
+    if (wbytes < 0) {
+      fprintf(stderr, "Failed to write: %s\n", strerror(errno));
+      exit(1);
+    }
+    offset += wbytes;
   }
 
   parse_ctx *p_ctx;
@@ -170,6 +194,61 @@ int main() {
       fprintf(stderr, "Failed to parse: %s\n", err_code_2_str(status));
       exit(1);
     }
+  }
+
+  fprintf(stderr, "Is ready to extract parsed packet: %d\n",
+          parse_ctx_is_ready_to_extract_packet(p_ctx));
+
+  pkt *parsed_pkt;
+  status = parse_ctx_receive_pkt(p_ctx, &parsed_pkt);
+  if (status != 0) {
+    fprintf(stderr, "Failed to extract: %s\n", err_code_2_str(status));
+  }
+
+  status = serialize_ctx_send_pkt(s_ctx, parsed_pkt);
+  if (status != 0) {
+    fprintf(stderr, "Failed to serialize parsed packet: %s\n",
+            err_code_2_str(status));
+  }
+
+  offset = 0;
+  while (1) {
+    int chunk_size;
+    status = serialize_ctx_receive_chunk(
+        &sbuf[offset], MAX(0, sizeof(sbuf) - offset), &chunk_size, s_ctx);
+    if (status != 0) {
+      fprintf(stderr, "Failed to receive chunk from the serialize_ctx: %s\n",
+              err_code_2_str(status));
+      exit(1);
+    }
+    fprintf(stderr, "Received %d bytes chunk from the serialize_ctx.\n",
+            chunk_size);
+    if (chunk_size == 0) {
+      fprintf(stderr, "All chunks extracted.\n");
+      break;
+    }
+    offset += chunk_size;
+  }
+
+  packet_len = offset;
+  fprintf(stderr, "Dumping serialized blob (%d bytes) to file2...\n",
+          packet_len);
+
+  char filename2[] = "./file2.bin";
+  fd = open(filename2, flags, modes);
+  if (fd == -1) {
+    fprintf(stderr, "Failed to open file: %s: %s", filename2, strerror(errno));
+    exit(1);
+  }
+
+  offset = 0;
+  while (offset < packet_len) {
+    int wbytes = write(fd, &sbuf[offset], MAX(0, packet_len - offset));
+    if (wbytes < 0) {
+      fprintf(stderr, "Failed to write: %s\n", strerror(errno));
+      exit(1);
+    }
+    offset += wbytes;
   }
 
   parse_ctx_free(&p_ctx);
