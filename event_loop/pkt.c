@@ -195,7 +195,7 @@ void serialize_ctx_free(struct serialize_ctx_impl *s_ctx) {
   deleter(s_ctx, closure);
 }
 
-int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
+int serialize_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   int status;
   char *temp;
 

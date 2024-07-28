@@ -75,6 +75,7 @@ int main() {
     status = pkt_body_receive_chunk(p, sbuf, 4, &chunk_size, offset);
     if (status != 0) {
       fprintf(stderr, "Failed to receive chunk: %s\n", err_code_2_str(status));
+      break;
     }
     offset += chunk_size;
     if (chunk_size >= 0 && chunk_size < sizeof(sbuf)) {
@@ -89,6 +90,20 @@ int main() {
     }
     fprintf(stderr, "Got %d bytes message chunk: %s\n", chunk_size, sbuf);
   }
+
+  serialize_ctx *s_ctx = serialize_ctx_create(get_default_allocator());
+  if (!s_ctx) {
+    fprintf(stderr, "Failed to create serialize context.\n");
+    exit(1);
+  }
+
+  status = serialize_ctx_send_pkt(s_ctx, p);
+  if (status != 0) {
+    fprintf(stderr, "Failed to serialize: %s\n", err_code_2_str(status));
+    exit(1);
+  }
+
+  serialize_ctx_free(s_ctx);
 
   pkt_free(&p);
 

@@ -79,8 +79,8 @@ serialize_ctx *serialize_ctx_create(struct alloc_t *allocator);
 
 // 把一个 packet 发送到 serialize context，出错时返回非 0 值。
 // 在通过调用 serialize_ctx_receive_chunk 把全部 chunk
-// 取出来之前，你不能再次调用 serialze_ctx_send_pkt.
-int serialze_ctx_send_pkt(serialize_ctx *s_ctx, pkt *p);
+// 取出来之前，你不能再次调用 serialize_ctx_send_pkt.
+int serialize_ctx_send_pkt(serialize_ctx *s_ctx, pkt *p);
 
 // 从一个 serialize context 取出 chunk，出错时返回负值，返回 0 表示没有更多
 // chunk（所有 chunk 已取出），返回正数表示 chunk 的大小。 chunk
