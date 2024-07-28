@@ -178,6 +178,8 @@ int pkt_body_receive_chunk(struct pkt_impl *p, char *buf, int length,
 struct serialize_ctx_impl {
   struct blob_t *buf;
   struct alloc_t *mem;
+  int fullfilled;
+  int read_offset;
 };
 
 struct serialize_ctx_impl *serialize_ctx_create(struct alloc_t *allocator) {
@@ -185,6 +187,8 @@ struct serialize_ctx_impl *serialize_ctx_create(struct alloc_t *allocator) {
       allocator->alloc(sizeof(struct serialize_ctx_impl), allocator->closure);
   c->buf = blob_create(PAGE_SIZE, allocator);
   c->mem = allocator;
+  c->fullfilled = 0;
+  c->read_offset = 0;
   return c;
 }
 
@@ -196,6 +200,10 @@ void serialize_ctx_free(struct serialize_ctx_impl *s_ctx) {
 }
 
 int serialize_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
+  if (s_ctx->fullfilled) {
+    return ErrInternalBufferFullFilled;
+  }
+
   int status;
   char *temp;
 
@@ -268,7 +276,41 @@ int serialize_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
     remain_cap -= chunk_size;
   }
 
+  s_ctx->fullfilled = 1;
+
   return 0;
+}
+
+int serialize_ctx_is_fullfilled(struct serialize_ctx_impl *s_ctx) {
+  return s_ctx->fullfilled;
+}
+
+int serialize_ctx_receive_chunk(char *dst, int max_len, int *chunk_size,
+                                struct serialize_ctx_impl *src) {
+  if (!src->fullfilled) {
+    return ErrNotReadyToExtract;
+  }
+  int status =
+      blob_receive_chunk(dst, max_len, chunk_size, src->buf, src->read_offset);
+  if (status != 0) {
+    return status;
+  }
+
+  src->read_offset += *chunk_size;
+  if (*chunk_size == 0) {
+    src->fullfilled = 0;
+    src->read_offset = 0;
+    blob_clear(src->buf);
+  }
+  return 0;
+}
+
+int serialize_ctx_is_ready_to_send_pkt(struct serialize_ctx_impl *s_ctx) {
+  return !s_ctx->fullfilled && s_ctx->read_offset == 0;
+}
+
+int serialize_ctx_is_ready_to_receive_chunk(struct serialize_ctx_impl *s_ctx) {
+  return s_ctx->fullfilled;
 }
 
 enum PktParseState {

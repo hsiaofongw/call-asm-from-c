@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/param.h>
 
 #include "alloc.h"
 
@@ -56,13 +57,13 @@ int blob_send_chunk(struct blob_t *b, char *buf, int length) {
 int blob_receive_chunk(char *dst, int dst_len, int *chunk_size,
                        struct blob_t *src, int src_offset) {
   int remain_src_size = src->size - src_offset;
-  *chunk_size = dst_len > remain_src_size ? remain_src_size : dst_len;
-  *chunk_size = *chunk_size < 0 ? 0 : *chunk_size;
+  *chunk_size = MAX(MIN(dst_len, remain_src_size), 0);
   if (*chunk_size == 0) {
     return 0;
   }
 
   memcpy(dst, &src->buf[src_offset], *chunk_size);
+
   return 0;
 }
 
@@ -86,3 +87,7 @@ int blob_deem_buf_written(struct blob_t *b, int size) {
   }
   return 0;
 }
+
+int blob_get_size(struct blob_t *b) { return b->size; }
+
+void blob_clear(struct blob_t *b) { b->size = 0; }

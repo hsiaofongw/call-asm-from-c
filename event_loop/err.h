@@ -49,6 +49,12 @@ enum ErrorReason {
 
   // 解析未完成
   ErrParsingIsIncomplete = 15,
+
+  // 内部缓冲区已满，请先取出部分内容
+  ErrInternalBufferFullFilled = 16,
+
+  // 尚未就绪
+  ErrNotReadyToExtract = 17,
 };
 
 // 获取错误代码对应的 null-terminated 描述字符串。

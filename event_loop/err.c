@@ -32,6 +32,10 @@ char *err_code_2_str(enum ErrorReason code) {
       return "ErrExtractParsedPacketFirst";
     case ErrParsingIsIncomplete:
       return "ErrParsingIsIncomplete";
+    case ErrInternalBufferFullFilled:
+      return "ErrInternalBufferFullFilled";
+    case ErrNotReadyToExtract:
+      return "ErrNotReadyToExtract";
     default:
       return "ErrUnknownError";
   }

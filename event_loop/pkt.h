@@ -77,17 +77,24 @@ int pkt_body_receive_chunk(pkt *p, char *buf, int length, int *chunk_size,
 // 创建一个 serialize_ctx 对象
 serialize_ctx *serialize_ctx_create(struct alloc_t *allocator);
 
-// 把一个 packet 发送到 serialize context，出错时返回非 0 值。
+// 把一个 packet 发送到 serialize_ctx。
 // 在通过调用 serialize_ctx_receive_chunk 把全部 chunk
 // 取出来之前，你不能再次调用 serialize_ctx_send_pkt.
 int serialize_ctx_send_pkt(serialize_ctx *s_ctx, pkt *p);
 
-// 从一个 serialize context 取出 chunk，出错时返回负值，返回 0 表示没有更多
-// chunk（所有 chunk 已取出），返回正数表示 chunk 的大小。 chunk
-// 的存放地址（buf）和最大写入大小（size）由 caller
-// 提供（可以在栈上分配一个非常小的 buffer 用来存放 chunk，然后多次调用）。
-int serialize_ctx_receive_chunk(serialize_ctx *s_ctx, char *buf, int length,
-                                int *size, int offset);
+// 从一个 serialize_ctx 取出 chunk，出错时返回非零值。通过 *chunk_size
+// 取得实际写入 dst 的 chunk 大小，当 *chunk_size == 0 时，可以认为
+// serialize_ctx 内的 chunk 已经全部取出（意味着可以再次调用
+// serialize_ctx_send_pkt）
+int serialize_ctx_receive_chunk(char *dst, int max_len, int *chunk_size,
+                                serialize_ctx *src);
+
+// 判断是否可以调用 serialize_ctx_send_pkt「发送」packet 给 serialize_ctx。
+int serialize_ctx_is_ready_to_send_pkt(serialize_ctx *);
+
+// 判断是否可以调用 serialize_ctx_receive_chunk 从 serialize_ctx
+// 中「接收」chunk。
+int serialize_ctx_is_ready_to_receive_chunk(serialize_ctx *);
 
 // 释放一个 serialize_ctx 对象
 void serialize_ctx_free(serialize_ctx *);
