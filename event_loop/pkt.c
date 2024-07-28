@@ -239,8 +239,11 @@ int serialize_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   memcpy(&temp[size_of_name_length + sender_size + size_of_name_length],
          receiver, receiver_size);
 
-  blob_deem_buf_written(s_ctx->buf,
-                        2 * size_of_name_length + sender_size + receiver_size);
+  status = blob_deem_buf_written(
+      s_ctx->buf, 2 * size_of_name_length + sender_size + receiver_size);
+  if (status != 0) {
+    return status;
+  }
 
   // content-length
   int *content_length_ptr;
@@ -249,20 +252,26 @@ int serialize_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   if (status != 0) {
     return status;
   }
+  int content_length;
   int sizeof_contentlength_field;
-  pkt_header_get_value(p, PktFieldContentLength, (void *)content_length_ptr,
-                       MAX_HEADER_VALUE_SIZE, &sizeof_contentlength_field);
+  status =
+      pkt_header_get_value(p, PktFieldContentLength, (char *)&content_length,
+                           MAX_HEADER_VALUE_SIZE, &sizeof_contentlength_field);
+  if (status != 0) {
+    return status;
+  }
+  *content_length_ptr = htonl(content_length);
   blob_deem_buf_written(s_ctx->buf, sizeof_contentlength_field);
 
-  status = blob_pre_allocate_buffer(s_ctx->buf, *content_length_ptr, &temp);
+  status = blob_pre_allocate_buffer(s_ctx->buf, content_length, &temp);
   if (status != 0) {
     return status;
   }
 
   int offset = 0;
-  int remain_cap = *content_length_ptr;
+  int remain_cap = content_length;
   while (1) {
-    int chunk_size = 0;
+    int chunk_size;
     status = pkt_body_receive_chunk(p, temp, remain_cap, &chunk_size, offset);
     if (status != 0) {
       return status;

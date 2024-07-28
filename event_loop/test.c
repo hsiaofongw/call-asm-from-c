@@ -129,6 +129,11 @@ int main() {
   }
 
   int packet_len = offset;
+  // fprintf(stderr, "Dumping serialized blob (%d bytes) to stdout...\n",
+  //         packet_len);
+  // for (int i = 0; i < packet_len; ++i) {
+  //   fputc(sbuf[i], stdout);
+  // }
 
   parse_ctx *p_ctx;
   status = parse_ctx_create(&p_ctx, get_default_allocator());
