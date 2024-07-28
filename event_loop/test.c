@@ -159,6 +159,11 @@ int main() {
     offset += wbytes;
   }
 
+  if (close(fd) == -1) {
+    fprintf(stderr, "Failed to close file: %s: %s", filename1, strerror(errno));
+    exit(1);
+  }
+
   parse_ctx *p_ctx;
   status = parse_ctx_create(&p_ctx, get_default_allocator());
   if (status != 0) {
@@ -249,6 +254,12 @@ int main() {
       exit(1);
     }
     offset += wbytes;
+  }
+
+  if (close(fd) == -1) {
+    fprintf(stderr, "Failed to close file: %s: %s\n", filename2,
+            strerror(errno));
+    exit(1);
   }
 
   parse_ctx_free(&p_ctx);
