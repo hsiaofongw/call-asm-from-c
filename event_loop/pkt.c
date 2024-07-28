@@ -415,13 +415,6 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
       *size_accepted += ingest_size;
     }
 
-    if (ringbuf_is_empty(p_ctx->buf)) {
-      if (p_ctx->parsed) {
-        return 0;
-      }
-      return ErrNeedMore;
-    }
-
     switch (p_ctx->state) {
       case EXPECT_MAGICWORDS:
         *need_more = size_of_magicwords - ringbuf_get_size(p_ctx->buf);
