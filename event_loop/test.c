@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <sys/param.h>
 
 #include "err.h"
 #include "pkt.h"
@@ -101,6 +102,37 @@ int main() {
   if (status != 0) {
     fprintf(stderr, "Failed to serialize: %s\n", err_code_2_str(status));
     exit(1);
+  }
+
+  fprintf(stderr, "Packet is sent to serialize_ctx.\n");
+
+  fprintf(stderr, "Ready to receive: %d\n",
+          serialize_ctx_is_ready_to_receive_chunk(s_ctx));
+
+  int chunk_size;
+  offset = 0;
+  while (1) {
+    status = serialize_ctx_receive_chunk(
+        &sbuf[offset], MAX(0, sizeof(sbuf) - offset), &chunk_size, s_ctx);
+    if (status != 0) {
+      fprintf(stderr, "Failed to receive chunk from serialize_ctx: %s\n",
+              err_code_2_str(status));
+      exit(1);
+    }
+    fprintf(stderr, "Received %d bytes chunk from serialize_ctx.\n",
+            chunk_size);
+    if (chunk_size == 0) {
+      fprintf(stderr, "All chunks extracted.\n");
+      break;
+    }
+    offset += chunk_size;
+  }
+
+  fprintf(stderr, "Dumping packet to stdout:\n");
+
+  int len = offset;
+  for (int i = 0; i < len; ++i) {
+    fputc(sbuf[i], stdout);
   }
 
   serialize_ctx_free(s_ctx);
