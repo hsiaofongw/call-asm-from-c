@@ -416,7 +416,10 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
     }
 
     if (ringbuf_is_empty(p_ctx->buf)) {
-      break;
+      if (p_ctx->parsed) {
+        return 0;
+      }
+      return ErrNeedMore;
     }
 
     switch (p_ctx->state) {
@@ -563,4 +566,12 @@ int parse_ctx_receive_pkt(struct parse_ctx_impl *p_ctx, pkt **p) {
   }
 
   return ErrParsingIsIncomplete;
+}
+
+int parse_ctx_is_ready_to_send_chunk(struct parse_ctx_impl *p_ctx) {
+  return !p_ctx->parsed;
+}
+
+int parse_ctx_is_ready_to_extract_packet(struct parse_ctx_impl *p_ctx) {
+  return p_ctx->parsed;
 }

@@ -128,15 +128,44 @@ int main() {
     offset += chunk_size;
   }
 
-  fprintf(stderr, "Dumping packet to stdout:\n");
+  int packet_len = offset;
 
-  int len = offset;
-  for (int i = 0; i < len; ++i) {
-    fputc(sbuf[i], stdout);
+  parse_ctx *p_ctx;
+  status = parse_ctx_create(&p_ctx, get_default_allocator());
+  if (status != 0) {
+    fprintf(stderr, "Failed to create parse_ctx: %s\n", err_code_2_str(status));
   }
 
-  serialize_ctx_free(s_ctx);
+  fprintf(stderr, "parse_ctx object is created at 0x%016lx\n",
+          (unsigned long)p_ctx);
+  fprintf(stderr, "parse_ctx is ready to send chunk: %d\n",
+          parse_ctx_is_ready_to_send_chunk(p_ctx));
 
+  offset = 0;
+  while (1) {
+    int size_accepted;
+    int need_more;
+    fprintf(stderr, "Chunk offset: %d\n", offset);
+    int chunk_size = MIN(1, packet_len - offset);
+    fprintf(stderr, "Chunk size: %d\n", chunk_size);
+    status = parse_ctx_send_chunk(p_ctx, &sbuf[offset], chunk_size,
+                                  &size_accepted, &need_more);
+    fprintf(stderr, "Accepted %d bytes\n", size_accepted);
+    if (status == 0) {
+      fprintf(stderr, "Parsing complete.\n");
+      break;
+    } else if (status == ErrNeedMore) {
+      fprintf(stderr, "Need more: %d bytes\n", need_more);
+      offset += size_accepted;
+      continue;
+    } else {
+      fprintf(stderr, "Failed to parse: %s\n", err_code_2_str(status));
+      exit(1);
+    }
+  }
+
+  parse_ctx_free(&p_ctx);
+  serialize_ctx_free(s_ctx);
   pkt_free(&p);
 
   return 0;

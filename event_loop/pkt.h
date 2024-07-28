@@ -116,4 +116,10 @@ int parse_ctx_send_chunk(parse_ctx *p_ctx, char *buf, int size,
 // packet 用完后要调用 pkt_free 函数进行释放。
 int parse_ctx_receive_pkt(parse_ctx *p_ctx, pkt **p);
 
+// 判断是否可以将 chunk 发送给 parse_ctx
+int parse_ctx_is_ready_to_send_chunk(parse_ctx *);
+
+// 判断是否可以从 parse_ctx 取出 packet
+int parse_ctx_is_ready_to_extract_packet(parse_ctx *);
+
 #endif
