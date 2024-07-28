@@ -45,13 +45,15 @@ int main() {
   sbuf[receiver_size] = 0;
   fprintf(stderr, "Receiver: %s\n", sbuf);
 
-  int content_len = 1024;
-  status = pkt_header_set_value(p, PktFieldContentLength, (char *)&content_len,
-                                sizeof(content_len));
+  char msg[] = "abcdef";
+  status = pkt_body_send_chunk(p, msg, sizeof(msg));
   if (status != 0) {
-    fprintf(stderr, "Failed to set content-length: %s\n",
+    fprintf(stderr, "Failed to send chunk to packet: %s\n",
             err_code_2_str(status));
   }
+
+  fprintf(stderr, "Message wrote: %s\n", msg);
+
   int content_len_var_size;
   status = pkt_header_get_value(p, PktFieldContentLength, sbuf, sizeof(sbuf),
                                 &content_len_var_size);
@@ -66,6 +68,27 @@ int main() {
   }
   memcpy(&received_content_len, sbuf, content_len_var_size);
   fprintf(stderr, "Received content-length: %d\n", received_content_len);
+
+  int offset = 0;
+  while (1) {
+    int chunk_size;
+    status = pkt_body_receive_chunk(p, sbuf, 4, &chunk_size, offset);
+    if (status != 0) {
+      fprintf(stderr, "Failed to receive chunk: %s\n", err_code_2_str(status));
+    }
+    offset += chunk_size;
+    if (chunk_size >= 0 && chunk_size < sizeof(sbuf)) {
+      sbuf[chunk_size] = 0;
+    }
+    if (chunk_size >= sizeof(sbuf)) {
+      chunk_size = sizeof(sbuf) - 1;
+    }
+    if (chunk_size == 0) {
+      fprintf(stderr, "EOF\n");
+      break;
+    }
+    fprintf(stderr, "Got %d bytes message chunk: %s\n", chunk_size, sbuf);
+  }
 
   pkt_free(&p);
 
