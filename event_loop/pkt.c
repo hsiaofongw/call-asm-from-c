@@ -222,6 +222,9 @@ int serialize_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   pkt_header_get_value(p, PktFieldReceiver, receiver, sizeof(receiver),
                        &receiver_size);
 
+  int sender_size_nw_byteorder = htonl(sender_size);
+  int receiver_size_nw_byteorder = htonl(receiver_size);
+
   int size_of_name_length = sizeof(p->sender_length);
   status = blob_pre_allocate_buffer(
       s_ctx->buf, 2 * size_of_name_length + sender_size + receiver_size, &temp);
@@ -229,9 +232,9 @@ int serialize_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
     return status;
   }
 
-  memcpy(temp, &sender_size, size_of_name_length);
+  memcpy(temp, &sender_size_nw_byteorder, size_of_name_length);
   memcpy(&temp[size_of_name_length], sender, sender_size);
-  memcpy(&temp[size_of_name_length + sender_size], &receiver_size,
+  memcpy(&temp[size_of_name_length + sender_size], &receiver_size_nw_byteorder,
          size_of_name_length);
   memcpy(&temp[size_of_name_length + sender_size + size_of_name_length],
          receiver, receiver_size);
