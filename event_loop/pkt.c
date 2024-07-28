@@ -253,16 +253,16 @@ int serialze_ctx_send_pkt(struct serialize_ctx_impl *s_ctx, pkt *p) {
   while (1) {
     int chunk_size = 0;
     status = pkt_body_receive_chunk(p, temp, remain_cap, &chunk_size, offset);
+    if (status != 0) {
+      return status;
+    }
+
     if (chunk_size > 0) {
       blob_deem_buf_written(s_ctx->buf, chunk_size);
     }
-    if (status == 0) {
+    if (chunk_size == 0) {
       // eof
       break;
-    }
-    if (status < 0) {
-      // error
-      return status;
     }
     offset += chunk_size;
     remain_cap -= chunk_size;
