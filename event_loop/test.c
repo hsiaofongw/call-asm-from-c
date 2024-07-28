@@ -129,11 +129,11 @@ int main() {
   }
 
   int packet_len = offset;
-  // fprintf(stderr, "Dumping serialized blob (%d bytes) to stdout...\n",
-  //         packet_len);
-  // for (int i = 0; i < packet_len; ++i) {
-  //   fputc(sbuf[i], stdout);
-  // }
+  fprintf(stderr, "Dumping serialized blob (%d bytes) to stdout...\n",
+          packet_len);
+  for (int i = 0; i < packet_len; ++i) {
+    fputc(sbuf[i], stdout);
+  }
 
   parse_ctx *p_ctx;
   status = parse_ctx_create(&p_ctx, get_default_allocator());
@@ -151,7 +151,7 @@ int main() {
     int size_accepted;
     int need_more;
     fprintf(stderr, "Chunk offset: %d\n", offset);
-    int chunk_size = MIN(1, packet_len - offset);
+    int chunk_size = MIN(9, packet_len - offset);
     fprintf(stderr, "Chunk size: %d\n", chunk_size);
     status = parse_ctx_send_chunk(p_ctx, &sbuf[offset], chunk_size,
                                   &size_accepted, &need_more);
