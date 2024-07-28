@@ -155,6 +155,9 @@ int main() {
     fprintf(stderr, "Chunk size: %d\n", chunk_size);
     status = parse_ctx_send_chunk(p_ctx, &sbuf[offset], chunk_size,
                                   &size_accepted, &need_more);
+    int state = parse_ctx_get_state(p_ctx);
+    fprintf(stderr, "State machine paused, current state: %s\n",
+            parse_ctx_get_state_str(state));
     fprintf(stderr, "Accepted %d bytes\n", size_accepted);
     if (status == 0) {
       fprintf(stderr, "Parsing complete.\n");

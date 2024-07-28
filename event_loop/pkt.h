@@ -122,4 +122,10 @@ int parse_ctx_is_ready_to_send_chunk(parse_ctx *);
 // 判断是否可以从 parse_ctx 取出 packet
 int parse_ctx_is_ready_to_extract_packet(parse_ctx *);
 
+// 获取状态机当前状态
+int parse_ctx_get_state(parse_ctx *);
+
+// 把状态机状态转换为 null-terminated 字符串
+char *parse_ctx_get_state_str(int state);
+
 #endif

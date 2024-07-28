@@ -348,6 +348,29 @@ struct parse_ctx_impl {
   int content_len_needed;
 };
 
+char *parse_ctx_get_state_str(int state) {
+  switch ((enum PktParseState)state) {
+    case EXPECT_MAGICWORDS:
+      return "EXPECT_MAGICWORDS";
+    case EXPECT_TYPE:
+      return "EXPECT_TYPE";
+    case EXPECT_SENDER_LENGTH:
+      return "EXPECT_SENDER_LENGTH";
+    case EXPECT_SENDER:
+      return "EXPECT_SENDER";
+    case EXPECT_RECEIVER_LENGTH:
+      return "EXPECT_RECEIVER_LENGTH";
+    case EXPECT_RECEIVER:
+      return "EXPECT_RECEIVER";
+    case EXPECT_CONTENT_LENGTH:
+      return "EXPECT_CONTENT_LENGTH";
+    case EXPECT_BODY:
+      return "EXPECT_BODY";
+    default:
+      return "(UNKNOWN)";
+  }
+}
+
 int parse_ctx_create(struct parse_ctx_impl **p_ctx_out,
                      struct alloc_t *allocator) {
   *p_ctx_out =
@@ -529,6 +552,7 @@ int parse_ctx_send_chunk(struct parse_ctx_impl *p_ctx, char *buf,
           return ErrBodyTooLarge;
         }
         p_ctx->content_len_needed = p_ctx->content_len;
+        p_ctx->state = EXPECT_BODY;
         continue;
       case EXPECT_BODY:
         *need_more = p_ctx->content_len_needed - ringbuf_get_size(p_ctx->buf);
@@ -580,3 +604,5 @@ int parse_ctx_is_ready_to_send_chunk(struct parse_ctx_impl *p_ctx) {
 int parse_ctx_is_ready_to_extract_packet(struct parse_ctx_impl *p_ctx) {
   return p_ctx->parsed;
 }
+
+int parse_ctx_get_state(struct parse_ctx_impl *p_ctx) { return p_ctx->state; }
