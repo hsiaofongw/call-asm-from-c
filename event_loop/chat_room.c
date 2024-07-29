@@ -10,7 +10,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "err.h"
 #include "llist.h"
+#include "pkt.h"
 #include "ringbuf.h"
 #include "util.h"
 
@@ -30,6 +32,7 @@ struct conn_ctx {
   struct server_ctx *srv;
   struct event *write_event;
   struct event *read_event;
+  parse_ctx *p_ctx;
 
   // never read from a file that is not readable
   // also never write to a file that is not writable
@@ -69,6 +72,14 @@ struct conn_ctx *conn_ctx_create(int fd) {
   c->read_buf = ringbuf_create(MAX_READ_BUF);
   c->write_buf = ringbuf_create(MAX_WRITE_BUF_PER_CONN);
   c->after_freed = NULL;
+  c->p_ctx = NULL;
+
+  int status = parse_ctx_create(&(c->p_ctx), get_default_allocator());
+  if (status != 0) {
+    fprintf(stderr, "Failed to allocate parse_ctx for fd %d: %s", fd,
+            err_code_2_str(status));
+    exit(1);
+  }
 
   return c;
 }
@@ -80,10 +91,16 @@ void conn_ctx_free(struct conn_ctx *c) {
     ringbuf_free(c->read_buf);
     c->read_buf = NULL;
   }
+
   if (c->write_buf != NULL) {
     ringbuf_free(c->write_buf);
     c->write_buf = NULL;
   }
+
+  if (c->p_ctx != NULL) {
+    parse_ctx_free(&(c->p_ctx));
+  }
+
   free(c);
   if (after_free_cb != NULL) {
     void (*cb)(int fd) = after_free_cb;
@@ -154,6 +171,23 @@ void on_ready_to_read(int fd, short flags, void *closure) {
       break;
     } else {
       fprintf(stderr, "Got %d bytes from fd %d.\n", result, fd);
+      if (parse_ctx_is_ready_to_send_chunk(c_ctx->p_ctx)) {
+        int accepted, need_more, status;
+        status = parse_ctx_send_chunk(c_ctx->p_ctx, buf, result, &accepted,
+                                      &need_more);
+        if (status != 0) {
+          fprintf(stderr, "Warning: failed to parse: %s\n",
+                  err_code_2_str(status));
+        }
+        if (accepted < result) {
+          // todo
+        }
+      } else {
+        fprintf(stderr,
+                "Warning: read event is ready but parse_ctx is still not ready "
+                "to parse.\n");
+      }
+
       int exceeded = ringbuf_send_chunk(c_ctx->read_buf, buf, result);
       if (exceeded > 0) {
         fprintf(stderr,
