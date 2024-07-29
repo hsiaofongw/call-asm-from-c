@@ -602,7 +602,7 @@ int parse_ctx_is_ready_to_send_chunk(struct parse_ctx_impl *p_ctx) {
 }
 
 int parse_ctx_is_ready_to_extract_packet(struct parse_ctx_impl *p_ctx) {
-  return p_ctx->parsed;
+  return p_ctx->parsed && p_ctx->p;
 }
 
 int parse_ctx_get_state(struct parse_ctx_impl *p_ctx) { return p_ctx->state; }
