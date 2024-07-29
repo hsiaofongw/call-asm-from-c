@@ -32,6 +32,8 @@ struct conn_ctx {
   struct server_ctx *srv;
   struct event *write_event;
   struct event *read_event;
+
+  ringbuf *parse_chunk_buf;
   parse_ctx *p_ctx;
 
   // never read from a file that is not readable
@@ -81,6 +83,9 @@ struct conn_ctx *conn_ctx_create(int fd) {
     exit(1);
   }
 
+  c->parse_chunk_buf = NULL;
+  c->parse_chunk_buf = ringbuf_create(MAX_READ_BUF);
+
   return c;
 }
 
@@ -99,6 +104,11 @@ void conn_ctx_free(struct conn_ctx *c) {
 
   if (c->p_ctx != NULL) {
     parse_ctx_free(&(c->p_ctx));
+  }
+
+  if (c->parse_chunk_buf != NULL) {
+    ringbuf_free(c->parse_chunk_buf);
+    c->parse_chunk_buf = NULL;
   }
 
   free(c);
