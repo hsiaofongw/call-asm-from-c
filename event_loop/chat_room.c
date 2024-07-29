@@ -65,7 +65,13 @@ struct server_ctx {
   struct event *write_event;
 };
 
-void server_enqueue_packet(struct server_ctx *srv, pkt *p) {}
+void server_enqueue_packet(struct server_ctx *srv, pkt *p, int fd) {
+  char saddr_buf[INET6_ADDRSTRLEN * 2];
+  sprint_conn(saddr_buf, sizeof(saddr_buf), fd);
+  fprintf(stderr, "Incoming packet from: %s\n", saddr_buf);
+
+  // todo: queue packet
+}
 
 struct conn_ctx *conn_ctx_create(int fd) {
   struct conn_ctx *c = malloc(sizeof(struct conn_ctx));
@@ -201,7 +207,7 @@ void on_ready_to_read(int fd, short flags, void *closure) {
                     err_code_2_str(status));
             exit(1);
           }
-          server_enqueue_packet(c_ctx->srv, p);
+          server_enqueue_packet(c_ctx->srv, p, fd);
         }
       } else {
         // Un-recoverable error.

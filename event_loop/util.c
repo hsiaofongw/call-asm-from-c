@@ -111,17 +111,25 @@ int get_peer_pretty_name(char *buf, ssize_t buflen, struct sockaddr *addr) {
 }
 
 void sprint_conn(char *buf, size_t buflen, int fd) {
-  struct sockaddr_storage cli_addr_store;
-  socklen_t cli_addr_size = sizeof(cli_addr_size);
+  if (fd == STDIN_FILENO) {
+    snprintf(buf, buflen, "[stdin]");
+  } else if (fd == STDOUT_FILENO) {
+    snprintf(buf, buflen, "[stdout]");
+  } else if (fd == STDERR_FILENO) {
+    snprintf(buf, buflen, "[stderr]");
+  } else {
+    struct sockaddr_storage cli_addr_store;
+    socklen_t cli_addr_size = sizeof(cli_addr_size);
 
-  if (getpeername(fd, (struct sockaddr *)&cli_addr_store, &cli_addr_size) ==
-      -1) {
-    fprintf(stderr, "Failed to get peer address (fd = %d), errorno: %s\n", fd,
-            strerror(errno));
-  }
+    if (getpeername(fd, (struct sockaddr *)&cli_addr_store, &cli_addr_size) ==
+        -1) {
+      fprintf(stderr, "Failed to get peer address (fd = %d), errorno: %s\n", fd,
+              strerror(errno));
+    }
 
-  if (get_peer_pretty_name(buf, buflen, (struct sockaddr *)(&cli_addr_store)) ==
-      -1) {
-    fprintf(stderr, "Failed to stringify peer address.\n");
+    if (get_peer_pretty_name(buf, buflen,
+                             (struct sockaddr *)(&cli_addr_store)) == -1) {
+      fprintf(stderr, "Failed to stringify peer address.\n");
+    }
   }
 }
