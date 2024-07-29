@@ -1,5 +1,6 @@
 #include <error.h>
 #include <event2/event.h>
+#include <libgen.h>
 #include <memory.h>
 #include <netdb.h>
 #include <stddef.h>
@@ -471,10 +472,20 @@ int server_run(struct server_ctx *srv) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc <= 1) {
-    fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+  if (argc <= 2) {
+    char *execname = basename(argv[0]);
+    fprintf(stderr, "Usage:\n\n  %s -l <port>\n  %s -c <host>:<port>", execname,
+            execname);
     exit(1);
   }
+  if (strcmp(argv[1], "-l") == 0) {
+    fprintf(stderr, "Launching in server mode.\n");
+    exit(0);
+  } else if (strcmp(argv[1], "-c") == 0) {
+    fprintf(stderr, "Launching in client mode.\n");
+    exit(0);
+  }
+
   char *port = argv[1];
 
   struct server_ctx *srv = server_start(port);
