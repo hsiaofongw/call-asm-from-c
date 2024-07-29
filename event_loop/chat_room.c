@@ -187,12 +187,7 @@ void on_ready_to_read(int fd, short flags, void *closure) {
       int accepted, need_more, status;
       status = parse_ctx_send_chunk(c_ctx->p_ctx, buf, chunk_size, &accepted,
                                     &need_more);
-      if (status == ErrNeedMore) {
-        // 可以放心的认为 accepted == result（传入的 chunk 被全部接受了）
-        continue;
-      } else if (status == 0) {
-        // 有可能存在 accepted < result
-        // 的情况，需要把数据安全地保存以供下一次使用。
+      if (status == ErrNeedMore || status == 0) {
         if (accepted < chunk_size) {
           ringbuf_return_chunk(c_ctx->read_buf, &buf[accepted],
                                chunk_size - accepted);
@@ -202,7 +197,7 @@ void on_ready_to_read(int fd, short flags, void *closure) {
           pkt *p;
           status = parse_ctx_receive_pkt(c_ctx->p_ctx, &p);
           if (status != 0) {
-            fprintf(stderr, "Failed to extract packet from parse_ctx: %s\n",
+            fprintf(stderr, "Failed to extract packet: %s\n",
                     err_code_2_str(status));
             exit(1);
           }
