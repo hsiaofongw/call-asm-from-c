@@ -471,25 +471,28 @@ int server_run(struct server_ctx *srv) {
   return 0;
 }
 
+void print_usage(char *argv[]) {
+  char *execname = basename(argv[0]);
+  fprintf(stderr, "Usage:\n\n  %s -l <port>\n  %s -c <host>:<port>", execname,
+          execname);
+}
+
 int main(int argc, char *argv[]) {
   if (argc <= 2) {
-    char *execname = basename(argv[0]);
-    fprintf(stderr, "Usage:\n\n  %s -l <port>\n  %s -c <host>:<port>", execname,
-            execname);
+    print_usage(argv);
     exit(1);
   }
   if (strcmp(argv[1], "-l") == 0) {
     fprintf(stderr, "Launching in server mode.\n");
-    exit(0);
+    char *port = argv[2];
+    struct server_ctx *srv = server_start(port);
+    fprintf(stderr, "Server listening on %s\n", port);
+    return server_run(srv);
   } else if (strcmp(argv[1], "-c") == 0) {
     fprintf(stderr, "Launching in client mode.\n");
     exit(0);
+  } else {
+    print_usage(argv);
+    exit(1);
   }
-
-  char *port = argv[1];
-
-  struct server_ctx *srv = server_start(port);
-  fprintf(stderr, "Server listening on %s\n", port);
-
-  return server_run(srv);
 }
