@@ -20,7 +20,7 @@ int queue_has_space(queue *q);
 void queue_enqueue(queue *q, void *item);
 
 // 把一个元素从队列头部取出
-void queue_dequeue(queue *q, void **output);
+void *queue_dequeue(queue *q);
 
 // 获取队列当前元素数量
 int queue_get_size(queue *q);

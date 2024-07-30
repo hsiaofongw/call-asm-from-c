@@ -4,9 +4,6 @@ CFLAGS=-O3 -I$(MUSL_PREFIX)/include -std=c17
 
 all: fdset_demo socket_mux io_echo
 
-test: test.c alloc.c err.c blob.c hash.c ringbuf.c pkt.c
-	clang-18 -O0 -g3 -o $@ $^
-
 alloc.o: alloc.c
 	clang-18 -O3 -flto -c -o $@ $^
 

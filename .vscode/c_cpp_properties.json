@@ -3,7 +3,8 @@
     {
       "name": "Linux",
       "includePath": [
-        "${userHome}/.local/libevent/include"
+        "${userHome}/.local/libevent/include",
+        "${workspaceFolder}/event_loop"
       ],
       "cStandard": "gnu17",
       "compilerPath": "/usr/bin/clang-18",

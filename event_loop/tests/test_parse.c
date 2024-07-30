@@ -5,8 +5,8 @@
 #include <sys/param.h>
 #include <unistd.h>
 
-#include "err.h"
-#include "pkt.h"
+#include "../err.h"
+#include "../pkt.h"
 
 int main() {
   pkt *p;

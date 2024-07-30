@@ -1,6 +1,7 @@
 #include "queue.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "ringbuf.h"
 
@@ -41,8 +42,12 @@ void queue_enqueue(queue *q, void *item) {
   ringbuf_send_chunk(q->data, (char *)&item, sizeof(void *));
 }
 
-void queue_dequeue(queue *q, void **output) {
-  ringbuf_receive_chunk(*output, sizeof(void *), q->data);
+void *queue_dequeue(queue *q) {
+  char buf[sizeof(void *)];
+  ringbuf_receive_chunk(buf, sizeof(buf), q->data);
+  void *result;
+  memcpy(&result, buf, sizeof(buf));
+  return result;
 }
 
 int queue_get_size(queue *q) {

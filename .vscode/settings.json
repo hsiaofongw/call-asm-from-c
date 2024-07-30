@@ -20,6 +20,7 @@
     "err.h": "c",
     "alloc.h": "c",
     "stdlib.h": "c",
-    "ringbuf.h": "c"
+    "ringbuf.h": "c",
+    "pkt.h": "c"
   }
 }
