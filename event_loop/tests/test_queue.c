@@ -35,5 +35,18 @@ int main() {
   printf("Deque called, elem3 = 0x%016lx\n", (unsigned long)elem3);
   print_queue(q);
 
+  queue_enqueue(q, (void *)&a);
+  printf("Enqueue called.\n");
+  queue_enqueue(q, (void *)&b);
+  printf("Enqueue called.\n");
+
+  elem1 = queue_dequeue(q);
+  printf("Deque called, elem1 = 0x%016lx\n", (unsigned long)elem1);
+  print_queue(q);
+
+  elem2 = queue_dequeue(q);
+  printf("Deque called, elem1 = 0x%016lx\n", (unsigned long)elem2);
+  print_queue(q);
+
   return 0;
 }
