@@ -21,6 +21,7 @@
 #define MAX_WRITE_BUF_PER_CONN (((0x1UL) << 20) * 32)
 #define MAX_SERVER_WRITE_BUF (((0x1UL) << 10) * 512)
 #define MAX_RX_PACKETS_QUEUE 16
+#define MAX_TX_PACKETS_QUEUE 16
 #define MAX_READ_CHUNK_SIZE 128
 
 char io_stage_buf[MAX_READ_BUF];
@@ -38,6 +39,7 @@ struct conn_ctx {
 
   parse_ctx *p_ctx;
   queue *rx_packets;
+  queue *tx_packets;
 
   // never read from a file that is not readable
   // also never write to a file that is not writable
@@ -69,14 +71,6 @@ struct server_ctx {
   struct event *write_event;
 };
 
-void server_enqueue_packet(struct server_ctx *srv, pkt *p, int fd) {
-  char saddr_buf[INET6_ADDRSTRLEN * 2];
-  sprint_conn(saddr_buf, sizeof(saddr_buf), fd);
-  fprintf(stderr, "Incoming packet from: %s\n", saddr_buf);
-
-  // todo: queue packet
-}
-
 struct conn_ctx *conn_ctx_create(int fd) {
   struct conn_ctx *c = malloc(sizeof(struct conn_ctx));
   c->fd = fd;
@@ -87,6 +81,7 @@ struct conn_ctx *conn_ctx_create(int fd) {
   c->after_freed = NULL;
   c->p_ctx = NULL;
   c->rx_packets = queue_create(MAX_RX_PACKETS_QUEUE);
+  c->tx_packets = queue_create(MAX_TX_PACKETS_QUEUE);
 
   int status = parse_ctx_create(&(c->p_ctx), get_default_allocator());
   if (status != 0) {
@@ -117,6 +112,10 @@ void conn_ctx_free(struct conn_ctx *c) {
 
   if (c->rx_packets) {
     queue_free(&(c->rx_packets));
+  }
+
+  if (c->tx_packets) {
+    queue_free(&(c->tx_packets));
   }
 
   free(c);
