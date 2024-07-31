@@ -13,12 +13,14 @@
 #include "err.h"
 #include "llist.h"
 #include "pkt.h"
+#include "queue.h"
 #include "ringbuf.h"
 #include "util.h"
 
 #define MAX_READ_BUF ((0x1UL) << 10)
 #define MAX_WRITE_BUF_PER_CONN (((0x1UL) << 20) * 32)
 #define MAX_SERVER_WRITE_BUF (((0x1UL) << 10) * 512)
+#define MAX_RX_PACKETS_QUEUE ((0x1UL) << 10)
 
 char io_stage_buf[MAX_READ_BUF];
 
@@ -34,6 +36,7 @@ struct conn_ctx {
   struct event *read_event;
 
   parse_ctx *p_ctx;
+  queue *rx_packets;
 
   // never read from a file that is not readable
   // also never write to a file that is not writable
@@ -82,6 +85,7 @@ struct conn_ctx *conn_ctx_create(int fd) {
   c->write_buf = ringbuf_create(MAX_WRITE_BUF_PER_CONN);
   c->after_freed = NULL;
   c->p_ctx = NULL;
+  c->rx_packets = queue_create(MAX_RX_PACKETS_QUEUE);
 
   int status = parse_ctx_create(&(c->p_ctx), get_default_allocator());
   if (status != 0) {
@@ -108,6 +112,10 @@ void conn_ctx_free(struct conn_ctx *c) {
 
   if (c->p_ctx != NULL) {
     parse_ctx_free(&(c->p_ctx));
+  }
+
+  if (c->rx_packets) {
+    queue_free(&(c->rx_packets));
   }
 
   free(c);
@@ -150,44 +158,36 @@ void on_ready_to_read(int fd, short flags, void *closure) {
 
   fprintf(stderr, "fd %d is now ready to read.\n", fd);
   char buf[MAX_READ_BUF];
-  while (1) {
-    int max_read = MAX(
-        0, MIN(sizeof(buf), ringbuf_get_remaining_capacity(c_ctx->read_buf)));
-    if (max_read == 0) {
-      // read buffer is full-filled.
+  int would_block = 0;
+  while (!would_block) {
+    if (queue_is_fullfilled(c_ctx->rx_packets)) {
       event_del(c_ctx->read_event);
       break;
     }
 
-    int result = read(fd, buf, max_read);
-    if (result == 0) {
-      fprintf(stderr, "Got EOF from fd %d\n", fd);
-      on_file_eof(c_ctx);
-      break;
-    } else if (result < 0) {
-      if (errno != EAGAIN && errno != EWOULDBLOCK) {
-        // Un-recoverable error.
-        fprintf(stderr, "Failed to call read() on fd %d: %s\n", fd,
-                strerror(errno));
-        exit(1);
+    int max_read = MAX(
+        0, MIN(sizeof(buf), ringbuf_get_remaining_capacity(c_ctx->read_buf)));
+    if (max_read > 0) {
+      int result = read(fd, buf, max_read);
+      if (result == 0) {
+        fprintf(stderr, "Got EOF from fd %d\n", fd);
+        on_file_eof(c_ctx);
+        return;
+      } else if (result < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+          // Un-recoverable error.
+          fprintf(stderr, "Failed to call read() on fd %d: %s\n", fd,
+                  strerror(errno));
+          exit(1);
+        }
+        would_block = 1;
+      } else if (result > 0) {
+        fprintf(stderr, "Got %d bytes from fd %d.\n", result, fd);
+        ringbuf_send_chunk(c_ctx->read_buf, buf, result);
       }
-      // Drained (or busy).
-      fprintf(stderr,
-              "fd %d is drained (for now), we would come here later (when it "
-              "goes up again).\n",
-              fd);
-      break;
-    } else {
-      fprintf(stderr, "Got %d bytes from fd %d.\n", result, fd);
-      ringbuf_send_chunk(c_ctx->read_buf, buf, result);
+    }
 
-      if (!parse_ctx_is_ready_to_send_chunk(c_ctx->p_ctx)) {
-        fprintf(stderr,
-                "Unknown error, unready to parse, if this ever happens, debug "
-                "and find bugs!.\n");
-        exit(1);
-      }
-
+    if (parse_ctx_is_ready_to_send_chunk(c_ctx->p_ctx)) {
       int chunk_size = ringbuf_receive_chunk(buf, sizeof(buf), c_ctx->read_buf);
 
       int accepted, need_more, status;
@@ -198,23 +198,18 @@ void on_ready_to_read(int fd, short flags, void *closure) {
           ringbuf_return_chunk(c_ctx->read_buf, &buf[accepted],
                                chunk_size - accepted);
         }
+      }
+    }
 
-        if (parse_ctx_is_ready_to_extract_packet(c_ctx->p_ctx)) {
-          pkt *p;
-          status = parse_ctx_receive_pkt(c_ctx->p_ctx, &p);
-          if (status != 0) {
-            fprintf(stderr, "Failed to extract packet: %s\n",
-                    err_code_2_str(status));
-            exit(1);
-          }
-          server_enqueue_packet(c_ctx->srv, p, fd);
-        }
-      } else {
-        // Un-recoverable error.
-        fprintf(stderr, "Warning: failed to parse: %s\n",
+    if (parse_ctx_is_ready_to_extract_packet(c_ctx->p_ctx)) {
+      pkt *p;
+      int status = parse_ctx_receive_pkt(c_ctx->p_ctx, &p);
+      if (status != 0) {
+        fprintf(stderr, "Failed to extract packet: %s\n",
                 err_code_2_str(status));
         exit(1);
       }
+      queue_enqueue(c_ctx->rx_packets, p);
     }
   }
 }
