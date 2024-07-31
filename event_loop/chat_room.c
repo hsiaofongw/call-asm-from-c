@@ -20,7 +20,8 @@
 #define MAX_READ_BUF ((0x1UL) << 10)
 #define MAX_WRITE_BUF_PER_CONN (((0x1UL) << 20) * 32)
 #define MAX_SERVER_WRITE_BUF (((0x1UL) << 10) * 512)
-#define MAX_RX_PACKETS_QUEUE ((0x1UL) << 10)
+#define MAX_RX_PACKETS_QUEUE 16
+#define MAX_READ_CHUNK_SIZE 128
 
 char io_stage_buf[MAX_READ_BUF];
 
@@ -153,38 +154,66 @@ void on_file_eof(struct conn_ctx *c_ctx) {
                             conn_ctx_list_elem_deleter, delete_all);
 }
 
+void read_chunk_from_fd(ringbuf *dst, int max_read, int *would_block, int *eof,
+                        int fd) {
+  char buf[MAX_READ_BUF];
+
+  *eof = 0;
+  while (1) {
+    int will_read =
+        MAX(0, MIN(sizeof(buf), ringbuf_get_remaining_capacity(dst), max_read));
+    if (will_read == 0) {
+      break;
+    }
+
+    int rbytes = read(fd, buf, will_read);
+    if (rbytes == 0) {
+      *eof = 1;
+      return;
+    }
+
+    if (rbytes < 0) {
+      if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        // Un-recoverable error.
+        fprintf(stderr, "Failed to call read() on fd %d: %s\n", fd,
+                strerror(errno));
+        exit(1);
+      }
+
+      *would_block = 1;
+      break;
+    }
+
+    max_read -= rbytes;
+
+    // 0 < rbytes < will_read <= remaining_capacity(dst)，
+    // 所以这个 chunk 一定能整个放进 ringbuf *dst。
+    ringbuf_send_chunk(dst, buf, rbytes);
+  }
+}
+
 void on_ready_to_read(int fd, short flags, void *closure) {
   struct conn_ctx *c_ctx = closure;
 
   fprintf(stderr, "fd %d is now ready to read.\n", fd);
   char buf[MAX_READ_BUF];
-  int would_block = 0;
-  while (!would_block) {
+  int would_block = 0, eof = 0;
+  while (1) {
     if (queue_is_fullfilled(c_ctx->rx_packets)) {
       event_del(c_ctx->read_event);
       break;
     }
 
-    int max_read = MAX(
-        0, MIN(sizeof(buf), ringbuf_get_remaining_capacity(c_ctx->read_buf)));
-    if (max_read > 0) {
-      int result = read(fd, buf, max_read);
-      if (result == 0) {
-        fprintf(stderr, "Got EOF from fd %d\n", fd);
-        on_file_eof(c_ctx);
-        return;
-      } else if (result < 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-          // Un-recoverable error.
-          fprintf(stderr, "Failed to call read() on fd %d: %s\n", fd,
-                  strerror(errno));
-          exit(1);
-        }
-        would_block = 1;
-      } else if (result > 0) {
-        fprintf(stderr, "Got %d bytes from fd %d.\n", result, fd);
-        ringbuf_send_chunk(c_ctx->read_buf, buf, result);
-      }
+    read_chunk_from_fd(c_ctx->read_buf, MAX_READ_CHUNK_SIZE, &would_block, &eof,
+                       fd);
+    if (eof) {
+      fprintf(stderr, "Got EOF from fd %d\n", fd);
+      on_file_eof(c_ctx);
+      return;
+    }
+
+    if (would_block) {
+      break;
     }
 
     if (parse_ctx_is_ready_to_send_chunk(c_ctx->p_ctx)) {
