@@ -38,6 +38,9 @@ struct conn_ctx {
   struct event *read_event;
 
   parse_ctx *p_ctx;
+  serialize_ctx *s_ctx;
+  pkt *serializing_pkt;
+
   queue *rx_packets;
   queue *tx_packets;
 
@@ -82,8 +85,13 @@ struct conn_ctx *conn_ctx_create(int fd) {
   c->p_ctx = NULL;
   c->rx_packets = queue_create(MAX_RX_PACKETS_QUEUE);
   c->tx_packets = queue_create(MAX_TX_PACKETS_QUEUE);
+  c->serializing_pkt = NULL;
 
-  int status = parse_ctx_create(&(c->p_ctx), get_default_allocator());
+  struct alloc_t *allocator = get_default_allocator();
+
+  c->s_ctx = serialize_ctx_create(allocator);
+
+  int status = parse_ctx_create(&(c->p_ctx), allocator);
   if (status != 0) {
     fprintf(stderr, "Failed to allocate parse_ctx for fd %d: %s", fd,
             err_code_2_str(status));
@@ -116,6 +124,16 @@ void conn_ctx_free(struct conn_ctx *c) {
 
   if (c->tx_packets) {
     queue_free(&(c->tx_packets));
+  }
+
+  if (c->s_ctx) {
+    serialize_ctx_free(c->s_ctx);
+    c->s_ctx = NULL;
+  }
+
+  if (c->serializing_pkt) {
+    pkt_free(c->serializing_pkt);
+    c->serializing_pkt = NULL;
   }
 
   free(c);
@@ -245,7 +263,23 @@ void on_ready_to_read(int fd, short flags, void *closure) {
 void on_ready_to_write(int fd, short flags, void *closure) {
   fprintf(stderr, "fd %d is now ready to write.\n", fd);
   struct conn_ctx *c_ctx = closure;
+
   while (1) {
+    if (queue_get_size(c_ctx->tx_packets) == 0) {
+      event_del(c_ctx->write_event);
+      break;
+    }
+
+    if (serialize_ctx_is_ready_to_send_pkt(c_ctx->s_ctx)) {
+      pkt *p = queue_dequeue(c_ctx->tx_packets);
+      serialize_ctx_send_pkt(c_ctx->s_ctx, p);
+
+      // serialize_ctx_send_pkt won't take the ownership of p from this scope,
+      // this pkt *p must be free manually afterwards. (e.g. after all chunks
+      // has been retrieved out from the serialize_ctx)
+      c_ctx->serializing_pkt = p;
+    }
+
     if (ringbuf_is_empty(c_ctx->write_buf)) {
       fprintf(
           stderr,
