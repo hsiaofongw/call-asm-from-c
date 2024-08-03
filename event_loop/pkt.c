@@ -318,7 +318,7 @@ int serialize_ctx_receive_chunk(char *dst, int max_len, int *chunk_size,
 }
 
 int serialize_ctx_is_ready_to_send_pkt(struct serialize_ctx_impl *s_ctx) {
-  return !s_ctx->fullfilled && s_ctx->read_offset == 0;
+  return !s_ctx->fullfilled;
 }
 
 int serialize_ctx_is_ready_to_receive_chunk(struct serialize_ctx_impl *s_ctx) {

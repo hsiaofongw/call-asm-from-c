@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/param.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -39,7 +40,6 @@ struct conn_ctx {
 
   parse_ctx *p_ctx;
   serialize_ctx *s_ctx;
-  pkt *serializing_pkt;
 
   queue *rx_packets;
   queue *tx_packets;
@@ -85,7 +85,6 @@ struct conn_ctx *conn_ctx_create(int fd) {
   c->p_ctx = NULL;
   c->rx_packets = queue_create(MAX_RX_PACKETS_QUEUE);
   c->tx_packets = queue_create(MAX_TX_PACKETS_QUEUE);
-  c->serializing_pkt = NULL;
 
   struct alloc_t *allocator = get_default_allocator();
 
@@ -131,11 +130,6 @@ void conn_ctx_free(struct conn_ctx *c) {
     c->s_ctx = NULL;
   }
 
-  if (c->serializing_pkt) {
-    pkt_free(c->serializing_pkt);
-    c->serializing_pkt = NULL;
-  }
-
   free(c);
   if (after_free_cb != NULL) {
     void (*cb)(int fd) = after_free_cb;
@@ -177,8 +171,9 @@ void read_chunk_from_fd(ringbuf *dst, int max_read, int *would_block, int *eof,
 
   *eof = 0;
   while (1) {
-    int will_read =
-        MAX(0, MIN(sizeof(buf), ringbuf_get_remaining_capacity(dst), max_read));
+    int will_read = MAX(
+        0,
+        MIN(sizeof(buf), MIN(ringbuf_get_remaining_capacity(dst), max_read)));
     if (will_read == 0) {
       break;
     }
@@ -273,20 +268,25 @@ void on_ready_to_write(int fd, short flags, void *closure) {
     if (serialize_ctx_is_ready_to_send_pkt(c_ctx->s_ctx)) {
       pkt *p = queue_dequeue(c_ctx->tx_packets);
       serialize_ctx_send_pkt(c_ctx->s_ctx, p);
-
-      // serialize_ctx_send_pkt won't take the ownership of p from this scope,
-      // this pkt *p must be free manually afterwards. (e.g. after all chunks
-      // has been retrieved out from the serialize_ctx)
-      c_ctx->serializing_pkt = p;
+      pkt_free(&p);
     }
 
-    if (ringbuf_is_empty(c_ctx->write_buf)) {
-      fprintf(
-          stderr,
-          "write_buf of fd %d is drained, removing its write interest now.\n",
-          fd);
-      event_del(c_ctx->write_event);
-      break;
+    while (serialize_ctx_is_ready_to_receive_chunk(c_ctx->s_ctx) != 0) {
+      char buf[MAX_READ_CHUNK_SIZE];
+      int chunk_size;
+      int remain_write_buf_cap =
+          ringbuf_get_remaining_capacity(c_ctx->write_buf);
+      int max_write = MAX(0, MIN(sizeof(buf), remain_write_buf_cap));
+      serialize_ctx_receive_chunk(buf, max_write, &chunk_size, c_ctx->s_ctx);
+      if (chunk_size == 0) {
+        break;
+      }
+
+      ringbuf_send_chunk(c_ctx->write_buf, buf, chunk_size);
+    }
+
+    if (!ringbuf_is_empty(c_ctx->write_buf)) {
+      // todo: write a chunk to socket.
     }
 
     char buf[MAX_READ_BUF];

@@ -103,7 +103,7 @@ void serialize_ctx_free(serialize_ctx *);
 int parse_ctx_create(parse_ctx **p_ctx, struct alloc_t *allocator);
 
 // 释放一个 parse_ctx 对象，
-// 注意：通过该 parse_ctx 对象解析出的 packet 不会被释放，需要手动释放。
+// 注意：通过该 parse_ctx 对象解析出的 packet 不会自动地被释放，需要手动释放。
 void parse_ctx_free(parse_ctx **);
 
 // 把一个 chunk 发送到一个 parse_ctx 对象，通过 size_accept 指针写入接收了的
