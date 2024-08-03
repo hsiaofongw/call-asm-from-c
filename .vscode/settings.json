@@ -21,6 +21,7 @@
     "alloc.h": "c",
     "stdlib.h": "c",
     "ringbuf.h": "c",
-    "pkt.h": "c"
+    "pkt.h": "c",
+    "priority_queue.h": "c"
   }
 }

@@ -70,7 +70,7 @@ struct server_ctx {
   llist_t **all_conns;
   struct event_base *evb;
   int server_socket;
-  ringbuf *write_buf;
+  queue *tx_packets;
   struct event *write_event;
 };
 
@@ -170,6 +170,7 @@ void read_chunk_from_fd(ringbuf *dst, int max_read, int *would_block, int *eof,
   char buf[MAX_READ_BUF];
 
   *eof = 0;
+  *would_block = 0;
   while (1) {
     int will_read = MAX(
         0,
@@ -255,6 +256,52 @@ void on_ready_to_read(int fd, short flags, void *closure) {
   }
 }
 
+void write_chunk_to_fd(int fd, int max_write, int *would_block, int *eof,
+                       ringbuf *src) {
+  char buf[MAX_READ_BUF];
+  *eof = 0;
+  *would_block = 0;
+  while (1) {
+    int will_write =
+        MAX(0, MIN(sizeof(buf), MIN(max_write, ringbuf_get_size(src))));
+    if (will_write == 0) {
+      // Currently there's no chunk to emit
+      break;
+    }
+
+    int chunk_size = ringbuf_receive_chunk(buf, will_write, src);
+    if (chunk_size == 0) {
+      fprintf(stderr, "Unexpected error, chunk_size shouldn't be zero.\n");
+      exit(1);
+    }
+    will_write = MIN(chunk_size, will_write);
+    if (will_write == 0) {
+      // Currently there's no chunk to emit
+      break;
+    }
+
+    int wbytes = write(fd, buf, will_write);
+    if (wbytes == 0) {
+      *eof = 1;
+      return;
+    }
+
+    if (wbytes < 0) {
+      if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        // Unrecoverable error.
+        fprintf(stderr, "Failed to call write() on fd %d: %s\n", fd,
+                strerror(errno));
+        exit(1);
+      }
+
+      *would_block = 1;
+      break;
+    }
+
+    max_write -= wbytes;
+  }
+}
+
 void on_ready_to_write(int fd, short flags, void *closure) {
   fprintf(stderr, "fd %d is now ready to write.\n", fd);
   struct conn_ctx *c_ctx = closure;
@@ -286,39 +333,16 @@ void on_ready_to_write(int fd, short flags, void *closure) {
     }
 
     if (!ringbuf_is_empty(c_ctx->write_buf)) {
-      // todo: write a chunk to socket.
-    }
-
-    char buf[MAX_READ_BUF];
-    int chunk_size = ringbuf_receive_chunk(buf, sizeof(buf), c_ctx->write_buf);
-    fprintf(stderr, "Got %d bytes chunk from the ring buffer.\n", chunk_size);
-
-    int result = write(fd, buf, chunk_size);
-    if (result == 0) {
-      fprintf(stderr,
-              "Got EOF from fd %d, this means the file (or network socket) "
-              "is closed, releasing the corresponding connection context.\n",
-              fd);
-      on_file_eof(c_ctx);
-      break;
-    } else if (result < 0) {
-      if (errno != EAGAIN && errno != EWOULDBLOCK) {
-        fprintf(stderr, "write: %s\n", strerror(errno));
-        exit(1);
+      int would_block, eof;
+      write_chunk_to_fd(fd, ringbuf_get_size(c_ctx->write_buf), &would_block,
+                        &eof, c_ctx->write_buf);
+      if (eof) {
+        on_file_eof(c_ctx);
+        break;
       }
-      fprintf(stderr,
-              "fd %d is busy for now, we would come here later (when it "
-              "goes up again).\n",
-              fd);
-      break;  // return to event loop
-    } else {
-      fprintf(stderr, "Emitted %d bytes to fd %d.\n", result, fd);
-      if (result < chunk_size) {
-        // need to insert them back to the ringbuf
-        fprintf(stderr, "Returning %d bytes chunk to the ring buffer.\n",
-                chunk_size - result);
-        ringbuf_return_chunk(c_ctx->write_buf, &buf[result],
-                             chunk_size - result);
+
+      if (would_block) {
+        break;
       }
     }
   }
@@ -451,7 +475,11 @@ int server_socket_bootstrap(char *port) {
 struct server_ctx *server_start(char *port) {
   struct server_ctx *srv = malloc(sizeof(struct server_ctx));
 
-  srv->write_buf = ringbuf_create(MAX_SERVER_WRITE_BUF);
+  srv->tx_packets = queue_create(MAX_TX_PACKETS_QUEUE);
+  if (srv->tx_packets == NULL) {
+    fprintf(stderr, "Failed to create tx queue on server object.\n");
+    exit(1);
+  }
 
   srv->server_socket = server_socket_bootstrap(port);
 
@@ -474,12 +502,14 @@ void server_shutdown(struct server_ctx *srv) {
   list_free(*(srv->all_conns), conn_ctx_list_elem_deleter, NULL);
   free(srv->all_conns);
   event_base_free(srv->evb);
-  ringbuf_free(srv->write_buf);
+  if (srv->tx_packets) {
+    queue_free(&(srv->tx_packets));
+  }
 
   free(srv);
 }
 
-int collect_input_from_each_readbuf(void *payload, int idx, void *closure) {
+int collect_packets_from_each_rx_queue(void *payload, int idx, void *closure) {
   struct server_ctx *srv = closure;
   struct conn_ctx *c = payload;
   if (!c->readable) {
@@ -543,36 +573,16 @@ int server_run(struct server_ctx *srv) {
     int evb_loop_flags = EVLOOP_ONCE;
     event_base_loop(srv->evb, evb_loop_flags);
 
-    // 只有确保 server 的 write_buf 能容纳所有 client 的
-    // read_buf，才去 collect 每个 read_buf 的内容到 server 的 write_buf。
-    // 因为，如果 client 的 read_buf 满了，server 就会调用 event_del
-    // 移除 read interest，也就是停止（调用 read 方法）从 client
-    // 读入更多数据，迫使 client 减轻向 server
-    // 的发包速率和发包流量（发慢点、发少点），某种程度上来说你可以把这理解为一种反压措施。
-    const int sum_of_cli_read_buf_size =
-        list_get_size(*srv->all_conns) * MAX_READ_BUF;
-    if (ringbuf_get_remaining_capacity(srv->write_buf) >=
-        sum_of_cli_read_buf_size) {
-      list_traverse_payload(*srv->all_conns, srv,
-                            collect_input_from_each_readbuf);
-    }
+    // 从每个连接的 RX 队列收集到的封包放到 server 的 TX 队列。
+    // todo:（调度问题）
+    // 在 server 的 TX 队列剩余容量有限的情况下，
+    // 应当优先照顾哪些连接的 RX 队列？
+    list_traverse_payload(*srv->all_conns, srv,
+                          collect_packets_from_each_rx_queue);
 
-    // 检查 server 的 write_buf
-    // 是否需要动态扩容（正如刚才所说，它需要具备容纳所有 client 的 read_buf
-    // 的能力）
-    const int curr_srv_write_buf_size = ringbuf_get_capacity(srv->write_buf);
-    if (curr_srv_write_buf_size < sum_of_cli_read_buf_size) {
-      int new_size = ringbuf_upscale_if_needed(&(srv->write_buf),
-                                               sum_of_cli_read_buf_size);
-      if (new_size > curr_srv_write_buf_size) {
-        fprintf(stderr, "Server's write_buf has been up-scaled to %d bytes\n",
-                new_size);
-      }
-    }
-
-    if (!ringbuf_is_empty(srv->write_buf)) {
+    if (!queue_get_size(srv->tx_packets) > 0) {
+      // 把 server TX 队列里的封包分发到每个连接的 TX 队列。
       list_traverse_payload(*srv->all_conns, srv, emit_to_each_writable_conn);
-      ringbuf_clear(srv->write_buf);
     }
   }
 
