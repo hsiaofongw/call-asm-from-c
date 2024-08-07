@@ -14,6 +14,7 @@
 #include "err.h"
 #include "llist.h"
 #include "pkt.h"
+#include "priority_queue.h"
 #include "queue.h"
 #include "ringbuf.h"
 #include "util.h"
@@ -42,7 +43,14 @@ struct conn_ctx {
   serialize_ctx *s_ctx;
 
   queue *rx_packets;
+
+  // number of packets move to server's packet queue
+  int nr_received;
+
   queue *tx_packets;
+
+  int nr_transmitted;
+  // number of packets move from server's packet queue
 
   // never read from a file that is not readable
   // also never write to a file that is not writable
@@ -85,6 +93,8 @@ struct conn_ctx *conn_ctx_create(int fd) {
   c->p_ctx = NULL;
   c->rx_packets = queue_create(MAX_RX_PACKETS_QUEUE);
   c->tx_packets = queue_create(MAX_TX_PACKETS_QUEUE);
+  c->nr_received = 0;
+  c->nr_transmitted = 0;
 
   struct alloc_t *allocator = get_default_allocator();
 
@@ -532,6 +542,26 @@ int collect_packets_from_each_rx_queue(void *payload, int idx, void *closure) {
   return 1;
 }
 
+int compare_conn_rx_nr(void *a, void *b, void *closure) {
+  struct conn_ctx *ca = a;
+  struct conn_ctx *cb = b;
+  if (ca->nr_received <= ca->nr_transmitted) {
+    return 1;
+  }
+  return 0;
+}
+
+int append_conn_to_ingest_queue(void *payload, int idx, void *closure) {
+  struct conn_ctx *c = payload;
+  if (!c->readable) {
+    return 1;
+  }
+
+  pq *ingest = closure;
+  pq_insert(ingest, c);
+  return 1;
+}
+
 int emit_to_each_writable_conn(void *payload, int idx, void *closure) {
   struct conn_ctx *c_ctx = payload;
   if (!c_ctx->writable) {
@@ -577,8 +607,39 @@ int server_run(struct server_ctx *srv) {
     // todo:（调度问题）
     // 在 server 的 TX 队列剩余容量有限的情况下，
     // 应当优先照顾哪些连接的 RX 队列？
-    list_traverse_payload(*srv->all_conns, srv,
-                          collect_packets_from_each_rx_queue);
+    pq *ingest =
+        pq_create(list_get_size(srv->all_conns), compare_conn_rx_nr, NULL);
+    if (!ingest) {
+      fprintf(stderr, "Failed to allocate queue.\n");
+      exit(1);
+    }
+
+    // 把每个 conn 按照 nr_received 的顺序放到 priority queue，nr_received
+    // 较小的排在前面。
+    list_traverse_payload(*srv->all_conns, ingest, append_conn_to_ingest_queue);
+
+    // 从 priority queue 取出之前放进去的每个 conn，然后从它的 rx_packets 把
+    // packet 移动到 server 的 packet 队列
+    while (!pq_is_empty(ingest)) {
+      struct conn_ctx *conn = pq_shift(ingest);
+      if (!conn) {
+        fprintf(stderr, "Unknown error: conn object is NULL.\n");
+        exit(1);
+      }
+
+      while (queue_has_space(srv->tx_packets) &&
+             queue_get_size(conn->rx_packets) > 0) {
+        pkt *p = queue_dequeue(conn->rx_packets);
+        queue_enqueue(srv->tx_packets, p);
+        ++(conn->nr_received);
+      }
+    }
+
+    queue_free(&ingest);
+    if (ingest) {
+      fprintf(stderr, "Unknown error: Failed to free ingest pq object.\n");
+      exit(1);
+    }
 
     if (!queue_get_size(srv->tx_packets) > 0) {
       // 把 server TX 队列里的封包分发到每个连接的 TX 队列。
