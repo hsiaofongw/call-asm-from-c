@@ -707,7 +707,8 @@ int main(int argc, char *argv[]) {
     // Make sure the client_name be always null-terminated.
     memset(client_name, 0, sizeof(client_name));
     memcpy(client_name, argv[3], MIN(name_len, sizeof(client_name) - 1));
-    fprintf(stderr, "Logged in as \"%s\".\n", client_name);
+    fprintf(stderr, "Logged in as: `%s`.\nHello! %s.\n", client_name,
+            client_name);
 
     return 0;
   } else {
