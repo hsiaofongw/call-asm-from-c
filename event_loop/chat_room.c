@@ -25,8 +25,10 @@
 #define MAX_RX_PACKETS_QUEUE 16
 #define MAX_TX_PACKETS_QUEUE 16
 #define MAX_READ_CHUNK_SIZE 128
+#define MAX_NAME_LENGTH 32
 
 char io_stage_buf[MAX_READ_BUF];
+char client_name[MAX_NAME_LENGTH];
 
 #define MAX_LISTEN_BACKLOG 20
 
@@ -390,18 +392,6 @@ void register_stdin_read_interest(struct server_ctx *srv) {
   register_read_interest(srv, STDIN_FILENO, after_stdin_close, 1, 0);
 }
 
-void register_stdout_write_interest(struct server_ctx *srv) {
-  struct event_base *evb = srv->evb;
-  set_io_non_block(STDOUT_FILENO);
-  struct conn_ctx *c_ctx = conn_ctx_create(STDOUT_FILENO);
-  c_ctx->after_freed = NULL;
-  c_ctx->readable = 0;
-  c_ctx->writable = 1;
-  c_ctx->srv = srv;
-
-  *srv->all_conns = list_insert_payload(*srv->all_conns, c_ctx);
-}
-
 void on_ready_to_accept(int srv_skt, short libev_flags, void *closure) {
   fprintf(stderr,
           "Server (fd %d) is now ready to accept new incoming connection.\n",
@@ -503,7 +493,6 @@ struct server_ctx *server_start(char *port) {
   }
   register_accept_conn_interest(srv);
   register_stdin_read_interest(srv);
-  register_stdout_write_interest(srv);
 
   return srv;
 }
@@ -635,7 +624,7 @@ void collect_rx_queue(struct server_ctx *srv) {
     conn->nr_received += queue_transfer(srv->tx_packets, conn->rx_packets);
   }
 
-  queue_free(&ingest);
+  pq_free(&ingest);
   if (ingest) {
     fprintf(stderr, "Unknown error: Failed to free pq object.\n");
     exit(1);
@@ -689,8 +678,11 @@ int server_run(struct server_ctx *srv) {
 
 void print_usage(char *argv[]) {
   char *execname = basename(argv[0]);
-  fprintf(stderr, "Usage:\n\n  %s -l <port>\n  %s -c <host>:<port>", execname,
-          execname);
+  fprintf(stderr,
+          "Usage:\n\n"
+          "  %s -l <port>\n"
+          "  %s -c <host>:<port> <username>",
+          execname, execname);
 }
 
 int main(int argc, char *argv[]) {
@@ -698,15 +690,26 @@ int main(int argc, char *argv[]) {
     print_usage(argv);
     exit(1);
   }
-  if (strcmp(argv[1], "-l") == 0) {
+  if (argc >= 3 && strcmp(argv[1], "-l") == 0) {
     fprintf(stderr, "Launching in server mode.\n");
     char *port = argv[2];
     struct server_ctx *srv = server_start(port);
     fprintf(stderr, "Server listening on %s\n", port);
     return server_run(srv);
-  } else if (strcmp(argv[1], "-c") == 0) {
+  } else if (argc >= 4 && strcmp(argv[1], "-c") == 0) {
     fprintf(stderr, "Launching in client mode.\n");
-    exit(0);
+    int name_len = strlen(argv[3]);
+    if (name_len > sizeof(client_name)) {
+      fprintf(stderr, "Username too long!\n");
+      exit(1);
+    }
+
+    // Make sure the client_name be always null-terminated.
+    memset(client_name, 0, sizeof(client_name));
+    memcpy(client_name, argv[3], MIN(name_len, sizeof(client_name) - 1));
+    fprintf(stderr, "Logged in as \"%s\".\n", client_name);
+
+    return 0;
   } else {
     print_usage(argv);
     exit(1);

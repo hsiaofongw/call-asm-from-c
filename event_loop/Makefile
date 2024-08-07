@@ -22,7 +22,7 @@ pkt.o: pkt.c
 chat_room: chat_room.c llist.c ringbuf.c util.c
 	clang-18 -O3 -flto -o $@ $^ $(shell pkg-config --cflags --libs libevent)
 
-chat_room_dbg: chat_room.c llist.c ringbuf.c util.c
+chat_room_dbg: chat_room.c llist.c ringbuf.c util.c queue.c priority_queue.c pkt.c blob.c alloc.c err.c
 	clang-18 -O0 -g3 -o $@ $^ $(shell pkg-config --cflags --libs libevent)
 
 io_echo: io_echo.c util.c
