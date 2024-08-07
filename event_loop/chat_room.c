@@ -545,10 +545,13 @@ int collect_packets_from_each_rx_queue(void *payload, int idx, void *closure) {
 int compare_conn_rx_nr(void *a, void *b, void *closure) {
   struct conn_ctx *ca = a;
   struct conn_ctx *cb = b;
-  if (ca->nr_received <= ca->nr_transmitted) {
-    return 1;
-  }
-  return 0;
+  return ca->nr_received <= cb->nr_received;
+}
+
+int compare_conn_tx_nr(void *a, void *b, void *closure) {
+  struct conn_ctx *ca = a;
+  struct conn_ctx *cb = b;
+  return ca->nr_transmitted <= cb->nr_transmitted;
 }
 
 int append_conn_to_ingest_queue(void *payload, int idx, void *closure) {
@@ -559,6 +562,17 @@ int append_conn_to_ingest_queue(void *payload, int idx, void *closure) {
 
   pq *ingest = closure;
   pq_insert(ingest, c);
+  return 1;
+}
+
+int append_conn_to_egress_queue(void *payload, int idx, void *closure) {
+  struct conn_ctx *c = payload;
+  if (!c->writable) {
+    return 1;
+  }
+
+  pq *egress = closure;
+  pq_insert(egress, c);
   return 1;
 }
 
@@ -608,7 +622,7 @@ int server_run(struct server_ctx *srv) {
     // 在 server 的 TX 队列剩余容量有限的情况下，
     // 应当优先照顾哪些连接的 RX 队列？
     pq *ingest =
-        pq_create(list_get_size(srv->all_conns), compare_conn_rx_nr, NULL);
+        pq_create(list_get_size(*srv->all_conns), compare_conn_rx_nr, NULL);
     if (!ingest) {
       fprintf(stderr, "Failed to allocate queue.\n");
       exit(1);
@@ -637,13 +651,41 @@ int server_run(struct server_ctx *srv) {
 
     queue_free(&ingest);
     if (ingest) {
-      fprintf(stderr, "Unknown error: Failed to free ingest pq object.\n");
+      fprintf(stderr, "Unknown error: Failed to free pq object.\n");
       exit(1);
     }
 
-    if (!queue_get_size(srv->tx_packets) > 0) {
-      // 把 server TX 队列里的封包分发到每个连接的 TX 队列。
-      list_traverse_payload(*srv->all_conns, srv, emit_to_each_writable_conn);
+    if (queue_get_size(srv->tx_packets) > 0) {
+      pq *egress =
+          pq_create(list_get_size(*srv->all_conns), compare_conn_tx_nr, NULL);
+      if (!egress) {
+        fprintf(stderr, "Failed to allocate queue.\n");
+        exit(1);
+      }
+
+      list_traverse_payload(*srv->all_conns, egress,
+                            append_conn_to_egress_queue);
+      while (!pq_is_empty(egress)) {
+        struct conn_ctx *conn = pq_shift(egress);
+        if (!conn) {
+          fprintf(stderr, "Unknown error: conn object is NULL.\n");
+          exit(1);
+        }
+
+        while (queue_get_size(srv->tx_packets) > 0 &&
+               queue_has_space(conn->tx_packets)) {
+          pkt *p = queue_dequeue(srv->tx_packets);
+          queue_enqueue(conn->tx_packets, p);
+        }
+      }
+
+      pq_free(&egress);
+      if (egress) {
+        fprintf(stderr, "Unknown error: Failed to free pq object.\n");
+        exit(1);
+      }
+
+      // todo: 实质发送每个 conn 的 tx packets 队列里的 packets。
     }
   }
 
