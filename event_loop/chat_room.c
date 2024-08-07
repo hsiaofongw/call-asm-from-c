@@ -526,12 +526,12 @@ int collect_packets_from_each_rx_queue(void *payload, int idx, void *closure) {
     return 1;
   }
 
-  int remain_cap = ringbuf_get_remaining_capacity(srv->write_buf);
+  int remain_cap = ringbuf_get_remaining_capacity(NULL);
   if (remain_cap <= 0) {
     return 1;
   }
 
-  ringbuf_transfer(srv->write_buf, c->read_buf, remain_cap);
+  ringbuf_transfer(NULL, c->read_buf, remain_cap);
   if (!event_pending(c->read_event, EV_READ, NULL)) {
     if (event_add(c->read_event, NULL) != 0) {
       fprintf(stderr, "Failed to register read event to fd %d\n", c->fd);
@@ -582,15 +582,12 @@ int emit_to_each_writable_conn(void *payload, int idx, void *closure) {
     return 1;
   }
 
-  int remain_cap = ringbuf_get_remaining_capacity(c_ctx->write_buf);
-  if (remain_cap <= 0) {
+  if (queue_get_size(c_ctx->tx_packets) == 0) {
     return 1;
   }
 
   struct server_ctx *srv = closure;
   struct event_base *evb = srv->evb;
-
-  ringbuf_copy(c_ctx->write_buf, srv->write_buf, remain_cap);
 
   if (!c_ctx->write_event || c_ctx->write_event == NULL) {
     c_ctx->write_event = event_new(evb, c_ctx->fd, EV_WRITE | EV_PERSIST,
@@ -611,82 +608,79 @@ int emit_to_each_writable_conn(void *payload, int idx, void *closure) {
   return 1;
 }
 
+void collect_rx_queue(struct server_ctx *srv) {
+  // 从每个连接的 RX 队列收集到的封包放到 server 的 TX 队列。
+  // 在 server 的 TX 队列剩余容量有限的情况下，
+  // 应当优先照顾哪些连接的 RX 队列？
+  pq *ingest =
+      pq_create(list_get_size(*srv->all_conns), compare_conn_rx_nr, NULL);
+  if (!ingest) {
+    fprintf(stderr, "Failed to allocate queue.\n");
+    exit(1);
+  }
+
+  // 把每个 conn 按照 nr_received 的顺序放到 priority queue，nr_received
+  // 较小的排在前面。
+  list_traverse_payload(*srv->all_conns, ingest, append_conn_to_ingest_queue);
+
+  // 从 priority queue 取出之前放进去的每个 conn，然后从它的 rx_packets 把
+  // packet 移动到 server 的 packet 队列
+  while (!pq_is_empty(ingest)) {
+    struct conn_ctx *conn = pq_shift(ingest);
+    if (!conn) {
+      fprintf(stderr, "Unknown error: conn object is NULL.\n");
+      exit(1);
+    }
+
+    conn->nr_received += queue_transfer(srv->tx_packets, conn->rx_packets);
+  }
+
+  queue_free(&ingest);
+  if (ingest) {
+    fprintf(stderr, "Unknown error: Failed to free pq object.\n");
+    exit(1);
+  }
+}
+
+void distribute_tx_queue(struct server_ctx *srv) {
+  pq *egress =
+      pq_create(list_get_size(*srv->all_conns), compare_conn_tx_nr, NULL);
+  if (!egress) {
+    fprintf(stderr, "Failed to allocate queue.\n");
+    exit(1);
+  }
+
+  list_traverse_payload(*srv->all_conns, egress, append_conn_to_egress_queue);
+  while (!pq_is_empty(egress)) {
+    struct conn_ctx *conn = pq_shift(egress);
+    if (!conn) {
+      fprintf(stderr, "Unknown error: conn object is NULL.\n");
+      exit(1);
+    }
+
+    conn->nr_transmitted += queue_transfer(conn->tx_packets, srv->tx_packets);
+  }
+
+  pq_free(&egress);
+  if (egress) {
+    fprintf(stderr, "Unknown error: Failed to free pq object.\n");
+    exit(1);
+  }
+}
+
 int server_run(struct server_ctx *srv) {
   while (1) {
     fprintf(stderr, "Waiting IO activity...\n");
     int evb_loop_flags = EVLOOP_ONCE;
     event_base_loop(srv->evb, evb_loop_flags);
 
-    // 从每个连接的 RX 队列收集到的封包放到 server 的 TX 队列。
-    // todo:（调度问题）
-    // 在 server 的 TX 队列剩余容量有限的情况下，
-    // 应当优先照顾哪些连接的 RX 队列？
-    pq *ingest =
-        pq_create(list_get_size(*srv->all_conns), compare_conn_rx_nr, NULL);
-    if (!ingest) {
-      fprintf(stderr, "Failed to allocate queue.\n");
-      exit(1);
-    }
-
-    // 把每个 conn 按照 nr_received 的顺序放到 priority queue，nr_received
-    // 较小的排在前面。
-    list_traverse_payload(*srv->all_conns, ingest, append_conn_to_ingest_queue);
-
-    // 从 priority queue 取出之前放进去的每个 conn，然后从它的 rx_packets 把
-    // packet 移动到 server 的 packet 队列
-    while (!pq_is_empty(ingest)) {
-      struct conn_ctx *conn = pq_shift(ingest);
-      if (!conn) {
-        fprintf(stderr, "Unknown error: conn object is NULL.\n");
-        exit(1);
-      }
-
-      while (queue_has_space(srv->tx_packets) &&
-             queue_get_size(conn->rx_packets) > 0) {
-        pkt *p = queue_dequeue(conn->rx_packets);
-        queue_enqueue(srv->tx_packets, p);
-        ++(conn->nr_received);
-      }
-    }
-
-    queue_free(&ingest);
-    if (ingest) {
-      fprintf(stderr, "Unknown error: Failed to free pq object.\n");
-      exit(1);
-    }
+    collect_rx_queue(srv);
 
     if (queue_get_size(srv->tx_packets) > 0) {
-      pq *egress =
-          pq_create(list_get_size(*srv->all_conns), compare_conn_tx_nr, NULL);
-      if (!egress) {
-        fprintf(stderr, "Failed to allocate queue.\n");
-        exit(1);
-      }
-
-      list_traverse_payload(*srv->all_conns, egress,
-                            append_conn_to_egress_queue);
-      while (!pq_is_empty(egress)) {
-        struct conn_ctx *conn = pq_shift(egress);
-        if (!conn) {
-          fprintf(stderr, "Unknown error: conn object is NULL.\n");
-          exit(1);
-        }
-
-        while (queue_get_size(srv->tx_packets) > 0 &&
-               queue_has_space(conn->tx_packets)) {
-          pkt *p = queue_dequeue(srv->tx_packets);
-          queue_enqueue(conn->tx_packets, p);
-        }
-      }
-
-      pq_free(&egress);
-      if (egress) {
-        fprintf(stderr, "Unknown error: Failed to free pq object.\n");
-        exit(1);
-      }
-
-      // todo: 实质发送每个 conn 的 tx packets 队列里的 packets。
+      distribute_tx_queue(srv);
     }
+
+    list_traverse_payload(*srv->all_conns, srv, emit_to_each_writable_conn);
   }
 
   server_shutdown(srv);

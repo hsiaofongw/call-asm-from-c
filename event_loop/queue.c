@@ -57,3 +57,12 @@ int queue_get_size(queue *q) {
 int queue_get_capacity(queue *q) {
   return ringbuf_get_capacity(q->data) / sizeof(void *);
 }
+
+int queue_transfer(queue *dst, queue *src) {
+  int n_items = 0;
+  while (queue_has_space(dst) && queue_get_size(src) > 0) {
+    void *elem = queue_dequeue(src);
+    queue_enqueue(dst, elem);
+  }
+  return n_items;
+}

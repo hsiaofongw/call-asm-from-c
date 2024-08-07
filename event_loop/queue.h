@@ -28,4 +28,7 @@ int queue_get_size(queue *q);
 // 获取队列容量
 int queue_get_capacity(queue *q);
 
+// 把元素从一个队列 src 转移到另一个队列 dst，返回实际转移的元素的数量。
+int queue_transfer(queue *dst, queue *src);
+
 #endif
