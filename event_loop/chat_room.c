@@ -66,6 +66,39 @@ struct conn_ctx {
   void (*after_freed)(int fd);
 };
 
+struct client_ctx {
+  // points to a null-terminated string, not owning.
+  char *name;
+
+  // client socket, it initiate the connection to the server.
+  int skt;
+};
+
+typedef struct client_ctx cli;
+
+cli *cli_create(char *name) {
+  cli *c = malloc(sizeof(cli));
+  if (c == NULL) {
+    return NULL;
+  }
+
+  c->name = name;
+  c->skt = -1;
+
+  return c;
+}
+
+// Preparation: set up events, sockets, connects to the server;
+void client_bootstrap(cli *c) {}
+
+// Main event loop
+void client_run(cli *c) {}
+
+void cli_free(cli **c) {
+  free(*c);
+  *c = NULL;
+}
+
 void after_stdin_close(int fd) {
   fprintf(stderr, "Bye!\n");
   exit(0);
@@ -707,8 +740,26 @@ int main(int argc, char *argv[]) {
     // Make sure the client_name be always null-terminated.
     memset(client_name, 0, sizeof(client_name));
     memcpy(client_name, argv[3], MIN(name_len, sizeof(client_name) - 1));
-    fprintf(stderr, "Logged in as: `%s`.\nHello! %s.\n", client_name,
-            client_name);
+    fprintf(stderr,
+            "Logged in as: `%s`.\n"
+            "Hello! %s.\n",
+            client_name, client_name);
+
+    cli *client = cli_create(client_name);
+    if (client == NULL) {
+      fprintf(stderr, "Failed to allocate client object.\n");
+      exit(1);
+    }
+
+    client_bootstrap(client);
+
+    client_run(client);
+
+    cli_free(&client);
+    if (client != NULL) {
+      fprintf(stderr, "Failed to free client object.\n");
+      exit(1);
+    }
 
     return 0;
   } else {
