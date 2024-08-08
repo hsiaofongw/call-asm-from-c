@@ -29,6 +29,7 @@
 
 char io_stage_buf[MAX_READ_BUF];
 char client_name[MAX_NAME_LENGTH];
+char remote_addr[INET6_ADDRSTRLEN * 2];
 
 #define MAX_LISTEN_BACKLOG 20
 
@@ -67,36 +68,52 @@ struct conn_ctx {
 };
 
 struct client_ctx {
-  // points to a null-terminated string, not owning.
+  // username, must be a non-empty null-terminated string, not owning.
   char *name;
 
   // client socket, it initiate the connection to the server.
   int skt;
+
+  // server's address, must be a non-empty null-terminated string, not owning.
+  // example: remote_addr = "192.168.1.101:12345"
+  char *remote_addr;
 };
 
 typedef struct client_ctx cli;
 
-cli *cli_create(char *name) {
+cli *cli_create(char *name, char *remote_addr) {
   cli *c = malloc(sizeof(cli));
   if (c == NULL) {
     return NULL;
   }
 
   c->name = name;
+  c->remote_addr = remote_addr;
   c->skt = -1;
 
   return c;
 }
 
 // Preparation: set up events, sockets, connects to the server;
-void client_bootstrap(cli *c) {}
+void client_bootstrap(cli *c) {
+  c->skt = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (c->skt == -1) {
+    fprintf(stderr, "Failed to create socket: socket: %s.\n", strerror(error));
+    exit(1);
+  }
+
+  set_io_non_block(c->skt);
+}
 
 // Main event loop
 void client_run(cli *c) {}
 
-void cli_free(cli **c) {
-  free(*c);
-  *c = NULL;
+void cli_free(cli **c_ptr) {
+  cli *c = *c_ptr;
+  close(c->skt);
+
+  free(c);
+  *c_ptr = NULL;
 }
 
 void after_stdin_close(int fd) {
@@ -714,7 +731,7 @@ void print_usage(char *argv[]) {
   fprintf(stderr,
           "Usage:\n\n"
           "  %s -l <port>\n"
-          "  %s -c <host>:<port> <username>",
+          "  %s -c <host>:<port> -u <username>",
           execname, execname);
 }
 
@@ -729,23 +746,33 @@ int main(int argc, char *argv[]) {
     struct server_ctx *srv = server_start(port);
     fprintf(stderr, "Server listening on %s\n", port);
     return server_run(srv);
-  } else if (argc >= 4 && strcmp(argv[1], "-c") == 0) {
+  } else if (argc >= 5 && strcmp(argv[1], "-c") == 0) {
     fprintf(stderr, "Launching in client mode.\n");
-    int name_len = strlen(argv[3]);
-    if (name_len > sizeof(client_name)) {
-      fprintf(stderr, "Username too long!\n");
+
+    int addr_len = strlen(argv[2]);
+    if (addr_len > sizeof(remote_addr) - 1 || addr_len == 0) {
+      fprintf(stderr, "Invalid remote address.\n");
       exit(1);
     }
 
-    // Make sure the client_name be always null-terminated.
+    memset(remote_addr, 0, sizeof(remote_addr));
+    memcpy(remote_addr, argv[2], addr_len);
+    fprintf(stderr, "Server address is: %s\n", remote_addr);
+
+    int name_len = strlen(argv[4]);
+    if (name_len > sizeof(client_name) - 1 || name_len == 0) {
+      fprintf(stderr, "Invalid username.\n");
+      exit(1);
+    }
+
     memset(client_name, 0, sizeof(client_name));
-    memcpy(client_name, argv[3], MIN(name_len, sizeof(client_name) - 1));
+    memcpy(client_name, argv[3], name_len);
     fprintf(stderr,
             "Logged in as: `%s`.\n"
             "Hello! %s.\n",
             client_name, client_name);
 
-    cli *client = cli_create(client_name);
+    cli *client = cli_create(client_name, remote_addr);
     if (client == NULL) {
       fprintf(stderr, "Failed to allocate client object.\n");
       exit(1);
