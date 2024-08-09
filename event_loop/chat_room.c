@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <error.h>
 #include <event2/event.h>
 #include <libgen.h>
@@ -92,6 +93,41 @@ cli *cli_create(char *name, char *remote_addr) {
   c->skt = -1;
 
   return c;
+}
+
+enum ParseV4State { NeedHostName, NeedSvcName };
+
+int parse_v4_addr_info(char *peer_addr, int peer_addr_len, char **hostname,
+                       int *hostname_len, char **svc_name, int *svc_name_len) {
+  enum ParseV4State status = NeedHostName;
+
+  for (int i = 0; i < peer_addr_len; ++i) {
+    switch (status) {
+      case NeedHostName:
+        if (!isdigit(peer_addr[i])) {
+          continue;
+        }
+    }
+  }
+}
+
+// 解析形如 <username>@<host>:<port> 这样的 URI
+// （见 RFC3986 section 3.2 "the authority component"）
+// host 应当符合 RFC3986 section 3.2.2 约定的格式。
+//
+int parse_host_port(char *peer_addr, int peer_addr_len, char **hostname,
+                    int *hostname_len, char **svc_name, int *svc_name_len) {
+  *svc_name_len = 0;
+  int column_rev_idx = 0;
+  char *end = &peer_addr[peer_addr_len];
+  while (end > peer_addr) {
+    --end;
+    if (*end == ':') {
+      break;
+    }
+  }
+
+  return 1;
 }
 
 // Preparation: set up events, sockets, connects to the server;
@@ -731,7 +767,7 @@ void print_usage(char *argv[]) {
   fprintf(stderr,
           "Usage:\n\n"
           "  %s -l <port>\n"
-          "  %s -c <host>:<port> -u <username>",
+          "  %s -c <username>@<host>:<port>",
           execname, execname);
 }
 
