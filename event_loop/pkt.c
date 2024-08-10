@@ -6,6 +6,7 @@
 
 #include "blob.h"
 #include "err.h"
+#include "limitations.h"
 #include "ringbuf.h"
 
 struct pkt_impl {
