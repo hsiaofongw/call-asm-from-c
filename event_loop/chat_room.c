@@ -95,15 +95,6 @@ cli *cli_create(char *name, char *remote_addr) {
   return c;
 }
 
-enum ParseV4State {
-  NeedUsername,
-  NeedHost,
-  NeedIPv4Literal,
-  NeedIPv6Literal,
-  NeedDNSLabel,
-  NeedPort
-};
-
 typedef struct auth_parse_ctx {
   char *username;
   int username_len;
@@ -154,6 +145,15 @@ void auth_parse_ctx_free(auth_parse_ctx **ap_ctx_ptr) {
   *ap_ctx_ptr = NULL;
 }
 
+enum ParseV4State {
+  NeedUsername,
+  NeedHost,
+  NeedIPv4Literal,
+  NeedIPv6Literal,
+  NeedDNSLabel,
+  NeedPort
+};
+
 // 解析形如 <username>@<host>:<port> 这样的 URI
 // （见 RFC3986 section 3.2 "the authority component"）
 // host 应当符合 RFC3986 section 3.2.2 约定的格式。
@@ -200,6 +200,9 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
           state = NeedIPv4Literal;
           --head;
         } else if (isalpha(c)) {
+          // 我们不支持以数字开头的域名。对于 DNS label 和 subdomain
+          // 的格式要求，我们遵循 RFC1035 指定的标准。
+          // 并且我们也不会在解析 IPv4 地址失败后回退到解析 DNS label 的状态。
           state = NeedDNSLabel;
           --head;
         } else {
@@ -214,6 +217,9 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
             return 1;
           }
         } else if (isdigit(c)) {
+          // 受到这种硬编码的限制，我们暂时不支持非 (utf-8,unicode)
+          // 编码和字符集组合。 也就是说，编码一定要是 utf-8，字符集一定要是
+          // Unicode 程序才能正常工作。
           ipv4_buf[v4_head] = ipv4_buf[v4_head] * 10 + c - '0';
           if (ipv4_buf[v4_head] > 255) {
             return 1;
@@ -231,10 +237,19 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
         ctx->hostname[ctx->hostname_len++] = c;
         continue;
       case NeedIPv6Literal:
+        if (c == ']') {
+          ++head;
+          if (head >= end || *head != ':') {
+            return 1;
+          }
+          state = NeedPort;
+          continue;
+        }
+
         break;
       case NeedDNSLabel:
         if (c == '.') {
-          if (ctx->hostname == NULL) {
+          if (ctx->hostname == NULL || ctx->hostname_len == 0) {
             // empty label
             return 1;
           } else if (ctx->hostname[ctx->hostname_len - 1] == '.') {
