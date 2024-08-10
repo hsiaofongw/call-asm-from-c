@@ -100,6 +100,7 @@ enum ParseV4State {
   NeedHost,
   NeedIPv4Literal,
   NeedIPv6Literal,
+  NeedDNSLabel,
   NeedPort
 };
 
@@ -195,30 +196,77 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
       case NeedHost:
         if (c == '[') {
           state = NeedIPv6Literal;
-          continue;
-        }
-
-        if (isdigit(c) && c != '0') {
+        } else if (isdigit(c)) {
           state = NeedIPv4Literal;
           --head;
-          continue;
+        } else if (isalpha(c)) {
+          state = NeedDNSLabel;
+          --head;
+        } else {
+          return 1;
         }
 
-        return 1;
+        continue;
       case NeedIPv4Literal:
         if (c == '.') {
           ++v4_head;
           if (v4_head >= 4) {
             return 1;
           }
-        }
-        ipv4_buf[v4_head] = ipv4_buf[v4_head] * 10 + c - '0';
-        if (ipv4_buf[v4_head] > 255) {
+        } else if (isdigit(c)) {
+          ipv4_buf[v4_head] = ipv4_buf[v4_head] * 10 + c - '0';
+          if (ipv4_buf[v4_head] > 255) {
+            return 1;
+          }
+        } else if (c == ':') {
+          state = NeedPort;
+          continue;
+        } else {
           return 1;
         }
+
         if (ctx->hostname == NULL) {
           ctx->hostname = malloc(INET_ADDRSTRLEN);
         }
+        ctx->hostname[ctx->hostname_len++] = c;
+        continue;
+      case NeedIPv6Literal:
+        break;
+      case NeedDNSLabel:
+        if (c == '.') {
+          if (ctx->hostname == NULL) {
+            // empty label
+            return 1;
+          } else if (ctx->hostname[ctx->hostname_len - 1] == '.') {
+            // two consective '.'s.
+            return 1;
+          }
+        } else if (c == '-' || isalnum(c)) {
+          if (isdigit(c) || c == '-') {
+            if (ctx->hostname == NULL || ctx->hostname_len == 0 ||
+                ctx->hostname[ctx->hostname_len - 1] == '.') {
+              return 1;
+            }
+          }
+        } else if (c == ':') {
+          if (ctx->hostname == NULL || ctx->hostname_len == 0) {
+            return 1;
+          }
+
+          state = NeedPort;
+          continue;
+        } else {
+          return 1;
+        }
+
+        if (ctx->hostname == NULL) {
+          ctx->hostname = mallco(MAX_HEADER_VALUE_SIZE);
+        }
+
+        if (ctx->hostname_len >= MAX_HEADER_VALUE_SIZE) {
+          return 1;
+        }
+
         ctx->hostname[ctx->hostname_len++] = c;
         continue;
     }
