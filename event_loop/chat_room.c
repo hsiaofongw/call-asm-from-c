@@ -95,39 +95,134 @@ cli *cli_create(char *name, char *remote_addr) {
   return c;
 }
 
-enum ParseV4State { NeedHostName, NeedSvcName };
+enum ParseV4State {
+  NeedUsername,
+  NeedHost,
+  NeedIPv4Literal,
+  NeedIPv6Literal,
+  NeedPort
+};
 
-int parse_v4_addr_info(char *peer_addr, int peer_addr_len, char **hostname,
-                       int *hostname_len, char **svc_name, int *svc_name_len) {
-  enum ParseV4State status = NeedHostName;
+typedef struct auth_parse_ctx {
+  char *username;
+  int username_len;
 
-  for (int i = 0; i < peer_addr_len; ++i) {
-    switch (status) {
-      case NeedHostName:
-        if (!isdigit(peer_addr[i])) {
-          continue;
-        }
-    }
+  char *hostname;
+  int hostname_len;
+
+  char *port;
+  int port_len;
+
+} auth_parse_ctx;
+
+auth_parse_ctx *auth_parse_ctx_create() {
+  auth_parse_ctx *ap_ctx = malloc(sizeof(auth_parse_ctx));
+  ap_ctx->hostname = NULL;
+  ap_ctx->username_len = 0;
+  ap_ctx->port = NULL;
+  ap_ctx->port_len = 0;
+  ap_ctx->username = NULL;
+  ap_ctx->username_len = 0;
+
+  return ap_ctx;
+}
+
+void auth_parse_ctx_free(auth_parse_ctx **ap_ctx_ptr) {
+  if (!ap_ctx_ptr) {
+    return;
   }
+
+  auth_parse_ctx *ap_ctx = *ap_ctx_ptr;
+  if (!ap_ctx) {
+    return;
+  }
+
+  if (ap_ctx->hostname) {
+    free(ap_ctx->hostname);
+  }
+
+  if (ap_ctx->port) {
+    free(ap_ctx->port);
+  }
+
+  if (ap_ctx->username) {
+    free(ap_ctx->username);
+  }
+
+  free(ap_ctx);
+  *ap_ctx_ptr = NULL;
 }
 
 // 解析形如 <username>@<host>:<port> 这样的 URI
 // （见 RFC3986 section 3.2 "the authority component"）
 // host 应当符合 RFC3986 section 3.2.2 约定的格式。
-//
-int parse_host_port(char *peer_addr, int peer_addr_len, char **hostname,
-                    int *hostname_len, char **svc_name, int *svc_name_len) {
-  *svc_name_len = 0;
-  int column_rev_idx = 0;
-  char *end = &peer_addr[peer_addr_len];
-  while (end > peer_addr) {
-    --end;
-    if (*end == ':') {
-      break;
+// 出错时返回非 0 值，调用者检查输入字符串是否符合相应的 RFC 规范。
+int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
+  char *head = origin;
+  char *end = &origin[origin_len];
+
+  int state = NeedUsername;
+  int ipv4_buf[4] = {0, 0, 0, 0};
+  int v4_head = 0;
+
+  while (head < end) {
+    char c = *head++;
+    if (isspace(c)) {
+      continue;
+    }
+
+    switch ((enum ParseV4State)state) {
+      case NeedUsername:
+        if (c == '@') {
+          state = NeedHost;
+          continue;
+        }
+
+        if (!isalnum(c)) {
+          return 1;
+        }
+
+        if (ctx->username == NULL) {
+          ctx->username = malloc(MAX_NAME_LENGTH * sizeof(char));
+        }
+
+        if (ctx->username_len >= MAX_NAME_LENGTH) {
+          return 1;
+        }
+
+        ctx->username[ctx->username_len++] = c;
+        continue;
+      case NeedHost:
+        if (c == '[') {
+          state = NeedIPv6Literal;
+          continue;
+        }
+
+        if (isdigit(c) && c != '0') {
+          state = NeedIPv4Literal;
+          --head;
+          continue;
+        }
+
+        return 1;
+      case NeedIPv4Literal:
+        if (c == '.') {
+          ++v4_head;
+          if (v4_head >= 4) {
+            return 1;
+          }
+        }
+        ipv4_buf[v4_head] = ipv4_buf[v4_head] * 10 + c - '0';
+        if (ipv4_buf[v4_head] > 255) {
+          return 1;
+        }
+        if (ctx->hostname == NULL) {
+          ctx->hostname = malloc(INET_ADDRSTRLEN);
+        }
+        ctx->hostname[ctx->hostname_len++] = c;
+        continue;
     }
   }
-
-  return 1;
 }
 
 // Preparation: set up events, sockets, connects to the server;
