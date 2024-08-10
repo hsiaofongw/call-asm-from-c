@@ -154,7 +154,19 @@ enum ParseV4State {
   NeedPort
 };
 
-// 解析形如 <username>@<host>:<port> 这样的 URI
+int c_to_int(char c, long *result) {
+  char buf[2];
+  buf[0] = c;
+  buf[1] = 0;
+  char *end = NULL;
+  *result = strtol(buf, &end, 10);
+  if (end == buf) {
+    return 1;
+  }
+  return 0;
+}
+
+// 解析形如 <username>@<host>:<port> 这样的 URI authority component.
 // （见 RFC3986 section 3.2 "the authority component"）
 // host 应当符合 RFC3986 section 3.2.2 约定的格式。
 // 出错时返回非 0 值，调用者检查输入字符串是否符合相应的 RFC 规范。
@@ -217,10 +229,18 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
             return 1;
           }
         } else if (isdigit(c)) {
-          // 受到这种硬编码的限制，我们暂时不支持非 (utf-8,unicode)
-          // 编码和字符集组合。 也就是说，编码一定要是 utf-8，字符集一定要是
-          // Unicode 程序才能正常工作。
-          ipv4_buf[v4_head] = ipv4_buf[v4_head] * 10 + c - '0';
+          long digit_value;
+          if (c_to_int(c, &digit_value) != 0) {
+            return 1;
+          }
+
+          // check if any bits except the lower 8 bits are set.
+          int lower_8_masks = (1 << 8) - 1;
+          if (digit_value & (~lower_8_masks)) {
+            return 1;
+          }
+
+          ipv4_buf[v4_head] = ipv4_buf[v4_head] * 10 + ((int)digit_value);
           if (ipv4_buf[v4_head] > 255) {
             return 1;
           }
