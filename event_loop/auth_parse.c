@@ -68,6 +68,8 @@ int is_ipv4_str_valid(char *base, int len) {
 
 int is_ipv6_str_valid(char *base, int len) {}
 
+int is_dns_label_valid(char *base, int len) {}
+
 int is_port_str_valid(char *base, int len) {}
 
 auth_parse_ctx *auth_parse_ctx_create() {
@@ -308,6 +310,10 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
 
         if (*head != ':') {
           return ErrHostnameLengthExceeded;
+        }
+
+        if (!is_dns_label_valid(head, ctx->hostname_len)) {
+          return ErrInvalidHost;
         }
 
         ++head;
