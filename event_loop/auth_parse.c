@@ -8,9 +8,21 @@
 
 #include "limitations.h"
 
-int is_username_valid(char *base, int len) {}
+int is_username_valid(char *base, int len) {
+  char *end = &base[len];
+  while (base < end) {
+    if (!isalnum(*base++)) {
+      return 0;
+    }
+  }
+  return 1;
+}
 
-int is_ipv4_str_valid(char *base, int len) {}
+int is_ipv4_str_valid(char *base, int len) {
+  char *end = &base[len];
+  while (base < end) {
+  }
+}
 
 int is_ipv6_str_valid(char *base, int len) {}
 
