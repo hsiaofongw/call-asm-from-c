@@ -8,6 +8,8 @@
 
 #include "limitations.h"
 
+// 检查字符串 [base, base+len) 是否是一个有效的 username.
+// 返回非 0 值表示有效，返回 0 表示非有效。
 int is_username_valid(char *base, int len) {
   char *end = &base[len];
   while (base < end) {
@@ -18,10 +20,50 @@ int is_username_valid(char *base, int len) {
   return 1;
 }
 
+// 检查字符串 [base, base+len) 是否是一个有效的 IPv4
+// 地址字符串，输入字符串不应当包含除十进制阿拉伯数字和 '.' 之外的任何字符。
+// 返回非 0 值表示有效，返回 0 值表示非有效。
 int is_ipv4_str_valid(char *base, int len) {
   char *end = &base[len];
+  int n_dots = 0;
+  char addr_buf[INET_ADDRSTRLEN];
+  int addr_head = 0;
   while (base < end) {
+    if (*base == '.') {
+      ++n_dots;
+      if (n_dots > 3) {
+        return 0;
+      }
+
+      ++base;
+    } else if (isdigit(*base)) {
+      while (base < end && isdigit(*base)) {
+        addr_buf[addr_head++] = *base++;
+        if (addr_head > 3) {
+          return 0;
+        }
+      }
+      addr_buf[addr_head] = 0;
+
+      char *end_ptr = NULL;
+      long val = strtol(addr_buf, &end_ptr, 10);
+      if (end_ptr != NULL && *end_ptr) {
+        return 0;
+      }
+
+      if (val & (~(((1L) << 8) - 1))) {
+        // val has bits set in non lower 8 bits.
+        // in another word, we only allow bits set in lower 8 bits.
+        return 0;
+      }
+
+      addr_head = 0;
+    } else {
+      return 0;
+    }
   }
+
+  return 1;
 }
 
 int is_ipv6_str_valid(char *base, int len) {}
