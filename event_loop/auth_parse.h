@@ -13,4 +13,14 @@ typedef struct auth_parse_ctx {
 
 } auth_parse_ctx;
 
+enum ParseResultStatus {
+  NoProblem = 0,
+  ErrInvalidUsername,
+  ErrUsernameTooLong,
+  ErrInvalidHost,
+  ErrInvalidIPv4Literal,
+  ErrInvalidIpv6Literal,
+  ErrUnknownHostAddressFamily,
+};
+
 #endif

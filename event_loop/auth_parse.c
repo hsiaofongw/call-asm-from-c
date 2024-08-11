@@ -8,6 +8,12 @@
 
 #include "limitations.h"
 
+int is_username_valid(char *base, int len) {}
+
+int is_ipv4_str_valid(char *base, int len) {}
+
+int is_ipv6_str_valid(char *base, int len) {}
+
 auth_parse_ctx *auth_parse_ctx_create() {
   auth_parse_ctx *ap_ctx = malloc(sizeof(auth_parse_ctx));
   ap_ctx->hostname = NULL;
@@ -71,7 +77,20 @@ int c_to_int(char c, long *result) {
 // （见 RFC3986 section 3.2 "the authority component"）
 // host 应当符合 RFC3986 section 3.2.2 约定的格式。
 // 出错时返回非 0 值，调用者检查输入字符串是否符合相应的 RFC 规范。
-int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
+//
+// 参数说明：
+// ctx: 保存解析结果
+// origin: 输入字符串基址
+// origin_len: 输入字符串长度 (不包括 null terminator)
+// end_str: 用来保存 invalid 部分的起始地址
+//
+// 返回值和错误处理：
+// 当解析成功时返回 0，返回非 0 值代表解析失败。
+// 根据 enum ParseResultStatus（在 auth_parse.h 中定义）判断原因，在 *end_str
+// 找到错误开始的地方。
+enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
+                                               char *origin, int origin_len,
+                                               char **end_str) {
   char *head = origin;
   char *end = &origin[origin_len];
 
@@ -79,7 +98,22 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
   int ipv4_buf[4] = {0, 0, 0, 0};
   int v4_head = 0;
 
+  int max_username = MAX_NAME_LENGTH;
+  ctx->username = malloc(max_username);
+  ctx->username_len = 0;
+
+  int max_hostname = MAX_HOSTNAME_ALLOWED;
+  ctx->hostname = malloc(max_hostname);
+  ctx->hostname_len = 0;
+
+  int max_portstr = MAX_PORT_STR_LEN;
+  ctx->port = malloc(max_portstr);
+  ctx->port_len = 0;
+
+  *end_str = end;
+
   while (head < end) {
+    *end_str = head;
     char c = *head++;
     if (isspace(c)) {
       continue;
@@ -87,26 +121,25 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
 
     switch ((enum ParseAuthState)state) {
       case NeedUsername:
-        if (c == '@') {
-          state = NeedHost;
-          continue;
+
+        while (head < end && head != '@' && ctx->username_len < max_username) {
+          ctx->username[ctx->username_len++] = *head;
+          ++head;
         }
 
-        if (!isalnum(c)) {
-          return 1;
+        if (!(head < end && *head == '@')) {
+          return ErrUsernameTooLong;
         }
 
-        if (ctx->username == NULL) {
-          ctx->username = malloc(MAX_NAME_LENGTH * sizeof(char));
+        if (!is_username_valid(ctx->username, ctx->username_len)) {
+          return ErrInvalidUsername;
         }
 
-        if (ctx->username_len >= MAX_NAME_LENGTH) {
-          return 1;
-        }
-
-        ctx->username[ctx->username_len++] = c;
+        ++head;
+        state = NeedHost;
         continue;
       case NeedHost:
+
         if (c == '[') {
           state = NeedIPv6Literal;
         } else if (isdigit(c)) {
@@ -119,68 +152,45 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
           state = NeedDNSLabel;
           --head;
         } else {
-          return 1;
+          return ErrUnknownHostAddressFamily;
         }
 
         continue;
       case NeedIPv4Literal:
-        if (c == '.') {
-          ++v4_head;
-          if (v4_head >= 4) {
-            return 1;
-          }
-        } else if (isdigit(c)) {
-          long digit_value;
-          if (c_to_int(c, &digit_value) != 0) {
-            return 1;
-          }
 
-          // check if any bits except the lower 8 bits are set.
-          int lower_8_masks = (1 << 8) - 1;
-          if (digit_value & (~lower_8_masks)) {
-            return 1;
-          }
-
-          ipv4_buf[v4_head] = ipv4_buf[v4_head] * 10 + ((int)digit_value);
-          if (ipv4_buf[v4_head] > 255) {
-            return 1;
-          }
-        } else if (c == ':') {
-          state = NeedPort;
-          continue;
-        } else {
-          return 1;
-        }
-
-        if (ctx->hostname == NULL) {
-          ctx->hostname = malloc(INET_ADDRSTRLEN);
-        }
-        ctx->hostname[ctx->hostname_len++] = c;
-        continue;
-      case NeedIPv6Literal:
-        // See RFC4291 section 2.2 Text Representation of Addresses.
-        char *v6_start = head;
-
-        while (head < end && *head != ']') {
+        while (head < end && *head != ':' && ctx->hostname_len < max_hostname) {
+          ctx->hostname[ctx->hostname_len++] = *head;
           ++head;
         }
 
-        if (head >= end) {
-          return 1;
+        if (head >= end || *head != ':') {
+          return ErrInvalidIPv4Literal;
         }
 
-        ctx->hostname_len = (unsigned long)(head - v6_start);
-        if (ctx->hostname != NULL) {
-          return 1;
+        if (!is_ipv4_str_valid(ctx->hostname, ctx->hostname_len)) {
+          return ErrInvalidIPv4Literal;
         }
 
-        ctx->hostname = malloc(ctx->hostname_len * sizeof(char));
-        memcpy(ctx->hostname, v6_start, ctx->hostname_len);
+        ++head;
+        state = NeedPort;
+        continue;
+      case NeedIPv6Literal:
+        // See RFC4291 section 2.2 Text Representation of Addresses.
+
+        while (head < end && *head != ']' && ctx->hostname_len < max_hostname) {
+          ctx->hostname[ctx->hostname_len++] = *head;
+          ++head;
+        }
+
+        if (head >= end || *head != ']') {
+          return 1;
+        }
 
         ++head;
         if (head >= end || *head != ':') {
           return 1;
         }
+        ++head;
         state = NeedPort;
         continue;
       case NeedDNSLabel:
@@ -210,16 +220,25 @@ int auth_parse_ctx_do_parse(auth_parse_ctx *ctx, char *origin, int origin_len) {
           return 1;
         }
 
-        if (ctx->hostname == NULL) {
-          ctx->hostname = mallco(MAX_HEADER_VALUE_SIZE);
-        }
-
-        if (ctx->hostname_len >= MAX_HEADER_VALUE_SIZE) {
+        continue;
+      case NeedPort:
+        if (ctx->hostname != NULL) {
           return 1;
         }
 
-        ctx->hostname[ctx->hostname_len++] = c;
-        continue;
+        ctx->hostname = malloc(MAX_PORT_STR_LEN);
+
+        while (head < end && isdigit(*head) &&
+               ctx->hostname_len < MAX_PORT_STR_LEN) {
+          ctx->hostname[ctx->hostname_len++] = *head;
+          ++head;
+        }
+
+        if (head < head) {
+          return 1;
+        }
     }
   }
+
+  return 1;
 }

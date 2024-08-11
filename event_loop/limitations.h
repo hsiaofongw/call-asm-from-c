@@ -8,6 +8,8 @@
 #define MAX_TX_PACKETS_QUEUE 16
 #define MAX_READ_CHUNK_SIZE 128
 #define MAX_NAME_LENGTH 32
+#define MAX_PORT_STR_LEN 5
+#define MAX_HOSTNAME_ALLOWED ((0x1UL) << 10)
 
 #define MAX_HEADER_VALUE_SIZE ((0x1UL) << 10)
 #define MAX_BODY_SIZE ((0x1UL) << 10)
