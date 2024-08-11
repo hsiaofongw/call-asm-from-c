@@ -52,15 +52,6 @@ void auth_parse_ctx_free(auth_parse_ctx **ap_ctx_ptr) {
   *ap_ctx_ptr = NULL;
 }
 
-enum ParseAuthState {
-  NeedUsername,
-  NeedHost,
-  NeedIPv4Literal,
-  NeedIPv6Literal,
-  NeedDNSLabel,
-  NeedPort
-};
-
 int c_to_int(char c, long *result) {
   char buf[2];
   buf[0] = c;
@@ -83,6 +74,7 @@ int c_to_int(char c, long *result) {
 // origin: 输入字符串基址
 // origin_len: 输入字符串长度 (不包括 null terminator)
 // end_str: 用来保存 invalid 部分的起始地址
+// last_state: 用来保存解析出错时 state machine 所处的状态
 //
 // 返回值和错误处理：
 // 当解析成功时返回 0，返回非 0 值代表解析失败。
@@ -90,13 +82,12 @@ int c_to_int(char c, long *result) {
 // 找到错误开始的地方。
 enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
                                                char *origin, int origin_len,
-                                               char **end_str) {
+                                               char **end_str,
+                                               int *last_state) {
   char *head = origin;
   char *end = &origin[origin_len];
 
   int state = NeedUsername;
-  int ipv4_buf[4] = {0, 0, 0, 0};
-  int v4_head = 0;
 
   int max_username = MAX_NAME_LENGTH;
   ctx->username = malloc(max_username);
@@ -119,6 +110,7 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
       continue;
     }
 
+    *last_state = state;
     switch ((enum ParseAuthState)state) {
       case NeedUsername:
 

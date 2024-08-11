@@ -13,6 +13,15 @@ typedef struct auth_parse_ctx {
 
 } auth_parse_ctx;
 
+enum ParseAuthState {
+  NeedUsername,
+  NeedHost,
+  NeedIPv4Literal,
+  NeedIPv6Literal,
+  NeedDNSLabel,
+  NeedPort
+};
+
 enum ParseResultStatus {
   NoProblem = 0,
   ErrInvalidUsername,
