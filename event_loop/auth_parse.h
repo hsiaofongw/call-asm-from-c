@@ -35,6 +35,7 @@ enum ParseResultStatus {
   ErrIPv4LiteralLengthExceeded,
   ErrIPv6LiteralLengthExceeded,
   ErrHostnameLengthExceeded,
+  ErrInvalidPort,
 };
 
 #endif
