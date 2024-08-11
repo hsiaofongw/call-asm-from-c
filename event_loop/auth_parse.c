@@ -84,10 +84,18 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
                                                char *origin, int origin_len,
                                                char **end_str,
                                                int *last_state) {
+  int state = NeedUsername;
+
   char *head = origin;
   char *end = &origin[origin_len];
+  while (head < end && isspace(*head)) {
+    ++head;
+  }
 
-  int state = NeedUsername;
+  if (head >= end) {
+    *end_str = head;
+    return ErrUnexpectedTerminator;
+  }
 
   int max_username = MAX_NAME_LENGTH;
   ctx->username = malloc(max_username);
@@ -101,15 +109,8 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
   ctx->port = malloc(max_portstr);
   ctx->port_len = 0;
 
-  *end_str = end;
-
   while (head < end) {
     *end_str = head;
-    char c = *head++;
-    if (isspace(c)) {
-      continue;
-    }
-
     *last_state = state;
     switch ((enum ParseAuthState)state) {
       case NeedUsername:
@@ -119,7 +120,12 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
           ++head;
         }
 
-        if (!(head < end && *head == '@')) {
+        if (head >= end) {
+          *end_str = head;
+          return ErrUnexpectedTerminator;
+        }
+
+        if (*head != '@') {
           return ErrUsernameTooLong;
         }
 
@@ -132,17 +138,16 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
         continue;
       case NeedHost:
 
-        if (c == '[') {
+        if (*head == '[') {
           state = NeedIPv6Literal;
-        } else if (isdigit(c)) {
+          ++head;
+        } else if (isdigit(*head)) {
           state = NeedIPv4Literal;
-          --head;
-        } else if (isalpha(c)) {
+        } else if (isalpha(*head)) {
           // 我们不支持以数字开头的域名。对于 DNS label 和 subdomain
           // 的格式要求，我们遵循 RFC1035 指定的标准。
           // 并且我们也不会在解析 IPv4 地址失败后回退到解析 DNS label 的状态。
           state = NeedDNSLabel;
-          --head;
         } else {
           return ErrUnknownHostAddressFamily;
         }
@@ -155,15 +160,24 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
           ++head;
         }
 
-        if (head >= end || *head != ':') {
-          return ErrInvalidIPv4Literal;
+        if (head >= end) {
+          return ErrUnexpectedTerminator;
+        }
+
+        if (*head != ':') {
+          return ErrIPv4LiteralLengthExceeded;
+        }
+
+        ++head;
+        if (head >= end) {
+          *end_str = head;
+          return ErrUnexpectedTerminator;
         }
 
         if (!is_ipv4_str_valid(ctx->hostname, ctx->hostname_len)) {
           return ErrInvalidIPv4Literal;
         }
 
-        ++head;
         state = NeedPort;
         continue;
       case NeedIPv6Literal:
@@ -174,44 +188,58 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
           ++head;
         }
 
-        if (head >= end || *head != ']') {
-          return 1;
+        if (head >= end) {
+          return ErrUnexpectedTerminator;
+        }
+
+        if (*head != ']') {
+          return ErrIPv6LiteralLengthExceeded;
         }
 
         ++head;
-        if (head >= end || *head != ':') {
-          return 1;
+        if (head >= end) {
+          *end_str = head;
+          return ErrUnexpectedTerminator;
         }
+
+        if (*head != ':') {
+          return ErrUnexpectedToken;
+        }
+
         ++head;
+        if (head >= end) {
+          *end_str = head;
+          return ErrUnexpectedTerminator;
+        }
+
+        if (!is_ipv6_str_valid(ctx->hostname, ctx->hostname_len)) {
+          return ErrInvalidIpv6Literal;
+        }
+
         state = NeedPort;
         continue;
       case NeedDNSLabel:
-        if (c == '.') {
-          if (ctx->hostname == NULL || ctx->hostname_len == 0) {
-            // empty label
-            return 1;
-          } else if (ctx->hostname[ctx->hostname_len - 1] == '.') {
-            // two consective '.'s.
-            return 1;
-          }
-        } else if (c == '-' || isalnum(c)) {
-          if (isdigit(c) || c == '-') {
-            if (ctx->hostname == NULL || ctx->hostname_len == 0 ||
-                ctx->hostname[ctx->hostname_len - 1] == '.') {
-              return 1;
-            }
-          }
-        } else if (c == ':') {
-          if (ctx->hostname == NULL || ctx->hostname_len == 0) {
-            return 1;
-          }
-
-          state = NeedPort;
-          continue;
-        } else {
-          return 1;
+        while (head < end && *head != ':' && ctx->hostname_len < max_hostname) {
+          ctx->hostname[ctx->hostname_len++] = *head;
+          ++head;
         }
 
+        if (head >= end) {
+          *end_str = head;
+          return ErrUnexpectedTerminator;
+        }
+
+        if (*head != ':') {
+          return ErrHostnameLengthExceeded;
+        }
+
+        ++head;
+        if (head >= end) {
+          *end_str = head;
+          return ErrUnexpectedTerminator;
+        }
+
+        state = NeedPort;
         continue;
       case NeedPort:
         if (ctx->hostname != NULL) {
@@ -232,5 +260,6 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
     }
   }
 
-  return 1;
+  *end_str = end;
+  return NoProblem;
 }

@@ -30,6 +30,11 @@ enum ParseResultStatus {
   ErrInvalidIPv4Literal,
   ErrInvalidIpv6Literal,
   ErrUnknownHostAddressFamily,
+  ErrUnexpectedToken,
+  ErrUnexpectedTerminator,
+  ErrIPv4LiteralLengthExceeded,
+  ErrIPv6LiteralLengthExceeded,
+  ErrHostnameLengthExceeded,
 };
 
 #endif
