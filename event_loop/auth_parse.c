@@ -71,12 +71,16 @@ enum AF_VER {
   AFV_IPv6 = 6,
 };
 
-typedef struct ipseg_ {
-  // 4 for IPv4, 6 for IPv6. (see `enum AF_VER` in this file.)
-  int addr_family;
+enum IPStrSegType {
+  COL = 1,
+  OCTETS = 2,
+  WILDCARD = 3,
+};
 
-  // 1 for '::' IPv6 wildcard, 0 for normal segment
-  int wilcard;
+typedef struct ipstr_token_ {
+
+  // See IPStrSegType
+  int token_type;
 
   // buffer to store characters in this segment
   char buf[4];
@@ -84,7 +88,7 @@ typedef struct ipseg_ {
   // number of characters that is already stored in the buffer
   int buflen;
 
-} ipseg;
+} ipstr_token_t;
 
 int is_hex(char c) {
   char hex_digits[] = { 
