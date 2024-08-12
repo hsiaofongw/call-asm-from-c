@@ -165,6 +165,17 @@ int is_ipv6_str_valid(char *base, int len) {
       if (n_segs >= max_n_segs) {
         return 0;
       }
+
+      for (int i = 0; i < segments[n_segs].buflen; ++i) {
+        if (!isdigit(segments[n_segs].buf[i])){
+          return 0;
+        }
+      }
+
+      if (segments[n_segs].buflen == 0) {
+        return 0;
+      }
+
       segments[n_segs].addr_family = AFV_IPv4;
       segments[n_segs].wilcard = 0;
       ++n_segs;
