@@ -178,9 +178,9 @@ int is_ipv6_str_valid(char *base, int len) {
     return 0;
   }
 
-  for (int tk_idx = 0; tk_idx < n_tokens; ++tk_idx) {
-    // todo...
-  }
+  ipstr_token_t *head = &tokens[0], *end = &tokens[n_tokens];
+  while (head < end) {
+    }
 
   int n_wilcards = 0;
 }
