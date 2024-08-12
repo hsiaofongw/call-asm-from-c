@@ -178,9 +178,46 @@ int is_ipv6_str_valid(char *base, int len) {
     return 0;
   }
 
+  int has_ipv4 = 0, has_wilcard = 0;
+  for (int i = 0; i < n_tokens; ++i) {
+    if (tokens[i].token_type == WILDCARD) {
+      has_wilcard = 1;
+      continue;
+    }
+
+    if (tokens[i].token_type == DOT) {
+      has_ipv4 = 1;
+    }
+  }
+
+  if (!has_wilcard) {
+    if (!has_ipv4) {
+      int pattern[] = {OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS, COL,
+                       OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS};
+      const int pattern_len = sizeof(pattern) / sizeof(pattern[0]);
+      if (n_tokens != pattern_len) {
+        return 0;
+      }
+      for (int i = 0; i < n_tokens; ++i) {
+        if (pattern[i] != tokens[i].token_type) {
+          return 0;
+        }
+      }
+      return 1;
+    } else {
+      // todo
+    }
+  } else {
+    if (has_ipv4) {
+      // todo
+    } else {
+      // todo
+    }
+  }
+
   ipstr_token_t *head = &tokens[0], *end = &tokens[n_tokens];
   while (head < end) {
-    }
+  }
 
   int n_wilcards = 0;
 }
