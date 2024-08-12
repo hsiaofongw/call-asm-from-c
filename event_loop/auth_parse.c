@@ -8,7 +8,7 @@
 
 #include "limitations.h"
 
-// 检查字符串 [base, base+len) 是否是一个有效的 username.
+// 检查字符串 [base, base+len) 是否表示一个有效的 username.
 // 返回非 0 值表示有效，返回 0 表示非有效。
 int is_username_valid(char *base, int len) {
   char *end = &base[len];
@@ -20,7 +20,7 @@ int is_username_valid(char *base, int len) {
   return 1;
 }
 
-// 检查字符串 [base, base+len) 是否是一个有效的 IPv4
+// 检查字符串 [base, base+len) 是否表示一个有效的 IPv4
 // 地址字符串，输入字符串不应当包含除十进制阿拉伯数字和 '.' 之外的任何字符。
 // 返回非 0 值表示有效，返回 0 值表示非有效。
 int is_ipv4_str_valid(char *base, int len) {
@@ -38,10 +38,10 @@ int is_ipv4_str_valid(char *base, int len) {
       ++base;
     } else if (isdigit(*base)) {
       while (base < end && isdigit(*base)) {
-        addr_buf[addr_head++] = *base++;
-        if (addr_head > 3) {
+        if (addr_head >= 3) {
           return 0;
         }
+        addr_buf[addr_head++] = *base++;
       }
       addr_buf[addr_head] = 0;
 
@@ -66,7 +66,66 @@ int is_ipv4_str_valid(char *base, int len) {
   return 1;
 }
 
-int is_ipv6_str_valid(char *base, int len) {}
+typedef struct ipseg_ {
+  // 4 for IPv4, 6 for IPv6.
+  int addr_family;
+
+  // 1 for '::' IPv6 wildcard, 0 for normal segment
+  int wilcard;
+
+  // buffer to store characters in this segment
+  char buf[4];
+
+  // number of characters that is already stored in the buffer
+  int buflen;
+
+} ipseg;
+
+// 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址
+int is_ipv6_str_valid(char *base, int len) {
+  ipseg segments[10];
+  int n_segs = 0;
+  int n_wilcards = 0;
+  const int max_n_segs = sizeof(segments) / sizeof(ipseg);
+  const int max_bufsize = sizeof(segments[0].buf);
+
+  char *head = base, *end = &base[len];
+  while (head < end) {
+    if (*head == ':') {
+      if (n_segs >= max_n_segs) {
+        return 0;
+      }
+
+      segments[n_segs].addr_family = 6;
+
+      if (&head[1] < end && head[1] == ':') {
+        if (n_wilcards > 0) {
+          return 0;
+        }
+        segments[n_segs].wilcard = 1;
+        ++n_wilcards;
+        ++head;
+      }
+
+      ++n_segs;
+      ++head;
+    } else if (isalnum(*head)) {
+      int *buflen = &(segments[n_segs].buflen);
+      if (*buflen >= max_bufsize) {
+        return 0;
+      }
+      segments[n_segs].buf[*buflen] = *head++;
+      ++(*buflen);
+    } else if (*head == '.') {
+      if (n_segs >= max_n_segs) {
+        return 0;
+      }
+      ++head;
+    } else {
+      return 0;
+    }
+  }
+}
 
 int is_dns_label_valid(char *base, int len) {}
 
