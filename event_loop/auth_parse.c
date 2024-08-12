@@ -72,13 +72,20 @@ enum AF_VER {
 };
 
 enum IPStrSegType {
+  // column seperator in ipv6 literals, e.g.: ':'
   COL = 1,
+
+  // hex segment in ipv6 literals, e.g.: 'abcd' '192'
   OCTETS = 2,
+
+  // wildcard mark in ipv6 literals, e.g.: '::'
   WILDCARD = 3,
+
+  // dot in ipv4 nested in ipv6 literals, e.g.: '.'
+  DOT = 4,
 };
 
 typedef struct ipstr_token_ {
-
   // See IPStrSegType
   int token_type;
 
@@ -91,10 +98,8 @@ typedef struct ipstr_token_ {
 } ipstr_token_t;
 
 int is_hex(char c) {
-  char hex_digits[] = { 
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b',
-    'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F'
-  };
+  char hex_digits[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a',
+                       'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F'};
 
   for (int i = 0; i < sizeof(hex_digits); ++i) {
     if (hex_digits[i] == c) {
@@ -107,7 +112,7 @@ int is_hex(char c) {
 
 int is_v4_segment_buf_valid(char *buf, int len) {
   for (int i = 0; i < len; ++i) {
-    if(!isdigit(buf[i])){
+    if (!isdigit(buf[i])) {
       return 0;
     }
   }
@@ -117,95 +122,46 @@ int is_v4_segment_buf_valid(char *buf, int len) {
 // 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址，
 // 返回非 0 值表示有效，返回 0 表示非有效。
 int is_ipv6_str_valid(char *base, int len) {
-  ipseg segments[10];
+  ipstr_token_t tokens[20];
   int n_segs = 0;
   int n_wilcards = 0;
-  const int max_n_segs = sizeof(segments) / sizeof(ipseg);
-  const int max_bufsize = sizeof(segments[0].buf);
-  for (int i = 0; i < max_n_segs; ++i) {
-    segments[i].addr_family = AFV_IPv6;
-    segments[i].wilcard = 0;
-
-    memset(segments[i].buf, 0, max_bufsize);
-    segments[i].buflen = 0;
-  }
+  const int max_n_segs = sizeof(tokens) / sizeof(tokens[0]);
+  const int max_bufsize = sizeof(tokens[0].buf);
 
   char *head = base, *end = &base[len];
-  while (head < end + 1) {
-    if (head == end) {
-      if (n_segs >= max_n_segs) {
-        return 0;
-      }
+  while (head < end) {
+    if (n_segs >= max_n_segs) {
+      return 0;
+    }
 
-      if (n_segs == 0) {
-        return 0;
-      }
-
-      if (segments[n_segs-1].addr_family == AFV_IPv4) {
-        if (!is_v4_segment_buf_valid(segments[n_segs-1].buf, segments[n_segs-1].buflen)) {
-          return 0;
-        }
-      }
-
-      if (!segments[n_segs-1].wilcard) {
-        segments[n_segs].addr_family = segments[n_segs-1].addr_family;
-        segments[n_segs].wilcard = 0;
-        ++n_segs;
-      }
-
-      break;
-    } else if (head+1 < end && strncmp(head, "::", 2) == 0) {
-      if (n_segs >= max_n_segs) {
-        return 0;
-      }
-
-      if (n_wilcards > 0) {
-        return 0;
-      }
-
-      segments[n_segs].addr_family = AFV_IPv6;
-      segments[n_segs].wilcard = 1;
-      ++n_wilcards;
-
-      if (n_segs > 0) {
-        n_segs += 2;
-      } else {
-        n_segs += 1;
-      }
-      head += 2;
-
+    if (head + 1 < end && strncmp(head, "::", 2) == 0) {
+      memcpy(tokens[n_segs].buf, "::", 2);
+      tokens[n_segs].buflen = 2;
+      tokens[n_segs].token_type = WILDCARD;
+      ++n_segs;
+      head = &head[2];
     } else if (*head == ':') {
-      if (n_segs >= max_n_segs) {
-        return 0;
-      }
-
-
-    } else if (is_hex(*head)) {
-      int *buflen = &(segments[n_segs].buflen);
-      if (*buflen >= max_bufsize) {
-        return 0;
-      }
-      segments[n_segs].buf[*buflen] = *head++;
-      ++(*buflen);
-    } else if (*head == '.') {
-      if (n_segs >= max_n_segs) {
-        return 0;
-      }
-
-      for (int i = 0; i < segments[n_segs].buflen; ++i) {
-        if (!isdigit(segments[n_segs].buf[i])){
-          return 0;
-        }
-      }
-
-      if (segments[n_segs].buflen == 0) {
-        return 0;
-      }
-
-      segments[n_segs].addr_family = AFV_IPv4;
-      segments[n_segs].wilcard = 0;
+      tokens[n_segs].buf[0] = ':';
+      tokens[n_segs].buflen = 1;
+      tokens[n_segs].token_type = COL;
       ++n_segs;
       ++head;
+    } else if (is_hex(*head)) {
+      char *buf = tokens[n_segs].buf;
+      int *buflen = &(tokens[n_segs].buflen);
+      *buflen = 0;
+      while (head < end && is_hex(*head) && *buflen < max_bufsize) {
+        buf[*buflen] = *head;
+        ++(*buflen);
+        ++head;
+      }
+      tokens[n_segs].token_type = OCTETS;
+      ++n_segs;
+    } else if (*head == '.') {
+      tokens[n_segs].buf[0] = '.';
+      tokens[n_segs].buflen = 1;
+      tokens[n_segs].token_type = DOT;
+      ++n_segs;
     } else {
       return 0;
     }
