@@ -119,15 +119,13 @@ int is_v4_segment_buf_valid(char *buf, int len) {
   return 1;
 }
 
-// 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址，
-// 返回非 0 值表示有效，返回 0 表示非有效。
-int is_ipv6_str_valid(char *base, int len) {
-  ipstr_token_t tokens[20];
+// 对 ipv6 string 进行 tokenize，结果写入 tokens，当成功时返回 tokens
+// 个数，失败时返回 0。 base 指向被 tokenize 字符串的基地址，len 表示被 tokenize
+// 字符串的长度（不包括末尾的 0）。
+int tokenize_ipv6_str(ipstr_token_t *tokens, int max_n_segs, char *base,
+                      int len) {
   int n_segs = 0;
-  int n_wilcards = 0;
-  const int max_n_segs = sizeof(tokens) / sizeof(tokens[0]);
   const int max_bufsize = sizeof(tokens[0].buf);
-
   char *head = base, *end = &base[len];
   while (head < end) {
     if (n_segs >= max_n_segs) {
@@ -166,6 +164,25 @@ int is_ipv6_str_valid(char *base, int len) {
       return 0;
     }
   }
+
+  return n_segs;
+}
+
+// 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址，
+// 返回非 0 值表示有效，返回 0 表示非有效。
+int is_ipv6_str_valid(char *base, int len) {
+  ipstr_token_t tokens[20];
+  const int max_n_segs = sizeof(tokens) / sizeof(tokens[0]);
+  int n_tokens = tokenize_ipv6_str(tokens, max_n_segs, base, len);
+  if (n_tokens == 0) {
+    return 0;
+  }
+
+  for (int tk_idx = 0; tk_idx < n_tokens; ++tk_idx) {
+    // todo...
+  }
+
+  int n_wilcards = 0;
 }
 
 int is_dns_label_valid(char *base, int len) {}
