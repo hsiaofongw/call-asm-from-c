@@ -101,6 +101,15 @@ int is_hex(char c) {
   return 0;
 }
 
+int is_v4_segment_buf_valid(char *buf, int len) {
+  for (int i = 0; i < len; ++i) {
+    if(!isdigit(buf[i])){
+      return 0;
+    }
+  }
+  return 1;
+}
+
 // 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址，
 // 返回非 0 值表示有效，返回 0 表示非有效。
 int is_ipv6_str_valid(char *base, int len) {
@@ -128,32 +137,45 @@ int is_ipv6_str_valid(char *base, int len) {
         return 0;
       }
 
+      if (segments[n_segs-1].addr_family == AFV_IPv4) {
+        if (!is_v4_segment_buf_valid(segments[n_segs-1].buf, segments[n_segs-1].buflen)) {
+          return 0;
+        }
+      }
+
       if (!segments[n_segs-1].wilcard) {
         segments[n_segs].addr_family = segments[n_segs-1].addr_family;
         segments[n_segs].wilcard = 0;
         ++n_segs;
       }
+
+      break;
+    } else if (head+1 < end && strncmp(head, "::", 2) == 0) {
+      if (n_segs >= max_n_segs) {
+        return 0;
+      }
+
+      if (n_wilcards > 0) {
+        return 0;
+      }
+
+      segments[n_segs].addr_family = AFV_IPv6;
+      segments[n_segs].wilcard = 1;
+      ++n_wilcards;
+
+      if (n_segs > 0) {
+        n_segs += 2;
+      } else {
+        n_segs += 1;
+      }
+      head += 2;
+
     } else if (*head == ':') {
       if (n_segs >= max_n_segs) {
         return 0;
       }
 
-      segments[n_segs].addr_family = AFV_IPv6;
-      if (segments[n_segs].buflen > 0) {
-        ++n_segs;
-      }
 
-      if (&head[1] < end && head[1] == ':') {
-        if (n_wilcards > 0) {
-          return 0;
-        }
-        segments[n_segs].wilcard = 1;
-        ++n_wilcards;
-        ++n_segs;
-        ++head;
-      }
-
-      ++head;
     } else if (is_hex(*head)) {
       int *buflen = &(segments[n_segs].buflen);
       if (*buflen >= max_bufsize) {
