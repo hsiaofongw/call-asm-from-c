@@ -110,7 +110,10 @@ int is_ipv6_str_valid(char *base, int len) {
   const int max_n_segs = sizeof(segments) / sizeof(ipseg);
   const int max_bufsize = sizeof(segments[0].buf);
   for (int i = 0; i < max_n_segs; ++i) {
-    
+    segments[i].addr_family = AFV_IPv6;
+    segments[i].wilcard = 0;
+
+    memset(segments[i].buf, 0, max_bufsize);
   }
 
   char *head = base, *end = &base[len];
