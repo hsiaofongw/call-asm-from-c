@@ -66,8 +66,13 @@ int is_ipv4_str_valid(char *base, int len) {
   return 1;
 }
 
+enum AF_VER {
+  AFV_IPv4 = 4,
+  AFV_IPv6 = 6,
+};
+
 typedef struct ipseg_ {
-  // 4 for IPv4, 6 for IPv6.
+  // 4 for IPv4, 6 for IPv6. (see `enum AF_VER` in this file.)
   int addr_family;
 
   // 1 for '::' IPv6 wildcard, 0 for normal segment
@@ -81,13 +86,32 @@ typedef struct ipseg_ {
 
 } ipseg;
 
-// 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址
+int is_hex(char c) {
+  char hex_digits[] = { 
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b',
+    'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F'
+  };
+
+  for (int i = 0; i < sizeof(hex_digits); ++i) {
+    if (hex_digits[i] == c) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+// 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址，
+// 返回非 0 值表示有效，返回 0 表示非有效。
 int is_ipv6_str_valid(char *base, int len) {
   ipseg segments[10];
   int n_segs = 0;
   int n_wilcards = 0;
   const int max_n_segs = sizeof(segments) / sizeof(ipseg);
   const int max_bufsize = sizeof(segments[0].buf);
+  for (int i = 0; i < max_n_segs; ++i) {
+    
+  }
 
   char *head = base, *end = &base[len];
   while (head < end) {
@@ -96,7 +120,10 @@ int is_ipv6_str_valid(char *base, int len) {
         return 0;
       }
 
-      segments[n_segs].addr_family = 6;
+      segments[n_segs].addr_family = AFV_IPv6;
+      if (segments[n_segs].buflen > 0) {
+        ++n_segs;
+      }
 
       if (&head[1] < end && head[1] == ':') {
         if (n_wilcards > 0) {
@@ -104,12 +131,12 @@ int is_ipv6_str_valid(char *base, int len) {
         }
         segments[n_segs].wilcard = 1;
         ++n_wilcards;
+        ++n_segs;
         ++head;
       }
 
-      ++n_segs;
       ++head;
-    } else if (isalnum(*head)) {
+    } else if (is_hex(*head)) {
       int *buflen = &(segments[n_segs].buflen);
       if (*buflen >= max_bufsize) {
         return 0;
@@ -120,6 +147,9 @@ int is_ipv6_str_valid(char *base, int len) {
       if (n_segs >= max_n_segs) {
         return 0;
       }
+      segments[n_segs].addr_family = AFV_IPv4;
+      segments[n_segs].wilcard = 0;
+      ++n_segs;
       ++head;
     } else {
       return 0;
