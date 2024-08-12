@@ -114,11 +114,26 @@ int is_ipv6_str_valid(char *base, int len) {
     segments[i].wilcard = 0;
 
     memset(segments[i].buf, 0, max_bufsize);
+    segments[i].buflen = 0;
   }
 
   char *head = base, *end = &base[len];
-  while (head < end) {
-    if (*head == ':') {
+  while (head < end + 1) {
+    if (head == end) {
+      if (n_segs >= max_n_segs) {
+        return 0;
+      }
+
+      if (n_segs == 0) {
+        return 0;
+      }
+
+      if (!segments[n_segs-1].wilcard) {
+        segments[n_segs].addr_family = segments[n_segs-1].addr_family;
+        segments[n_segs].wilcard = 0;
+        ++n_segs;
+      }
+    } else if (*head == ':') {
       if (n_segs >= max_n_segs) {
         return 0;
       }
