@@ -57,7 +57,7 @@ int is_byte_decimal(char *buf, int len) {
   }
 
   char *endptr;
-  long val = strtol(buf, &endptr, 10);
+  long val = strtol(parse_int_buf, &endptr, 10);
   if (!(endptr != NULL && *endptr == 0)) {
     return 0;
   }
