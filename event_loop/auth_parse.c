@@ -244,7 +244,7 @@ int is_ipv6_str_valid(char *base, int len) {
   }
 
   ipstr_token_t *head = tokens, *end = &tokens[n_tokens];
-  if (head >= end) {
+  if (head == end) {
     return 0;
   }
 
