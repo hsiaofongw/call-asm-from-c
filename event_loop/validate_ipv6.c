@@ -1,3 +1,4 @@
+#include <stdlib.h>
 
 enum IPStrSegType {
   // column seperator in ipv6 literals, e.g.: ':'
@@ -41,17 +42,36 @@ int is_hex(char c) {
   return 0;
 }
 
-int is_decimal(char *buf, int len) {
+int is_byte_decimal(char *buf, int len) {
+  if (len <= 0 || len > 3) {
+    return 0;
+  }
+
+  char parse_int_buf[] = {0, 0, 0, 0};
   for (int i = 0; i < len; ++i) {
-    if (!isdigit(buf[i])) {
+    char c = buf[i];
+    if (!isdigit(c)) {
       return 0;
     }
+    parse_int_buf[i] = c;
   }
+
+  char *endptr;
+  long val = strtol(buf, &endptr, 10);
+  if (!(endptr != NULL && *endptr == 0)) {
+    return 0;
+  }
+
+  if (val < 0 || val > 255) {
+    return 0;
+  }
+
   return 1;
 }
 
 void try_convert_octets_to_dec(ipstr_token_t *token) {
-  if (token->token_type == OCTETS && is_decimal(token->buf, token->buflen)) {
+  if (token->token_type == OCTETS &&
+      is_byte_decimal(token->buf, token->buflen)) {
     token->token_type = DEC;
   }
 }
