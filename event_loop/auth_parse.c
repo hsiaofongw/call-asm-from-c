@@ -168,6 +168,19 @@ int tokenize_ipv6_str(ipstr_token_t *tokens, int max_n_segs, char *base,
   return n_segs;
 }
 
+int test_pattern(int *pattern, int pattern_len, ipstr_token_t *tokens,
+                 int n_tokens) {
+  if (n_tokens != pattern_len) {
+    return 0;
+  }
+  for (int i = 0; i < n_tokens; ++i) {
+    if (pattern[i] != tokens[i].token_type) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 // 检查字符串 [base, base+len) 是否表示一个有效的 IPv6 地址，
 // 返回非 0 值表示有效，返回 0 表示非有效。
 int is_ipv6_str_valid(char *base, int len) {
@@ -181,7 +194,7 @@ int is_ipv6_str_valid(char *base, int len) {
   int has_ipv4 = 0, has_wilcard = 0;
   for (int i = 0; i < n_tokens; ++i) {
     if (tokens[i].token_type == WILDCARD) {
-      has_wilcard = 1;
+      ++has_wilcard;
       continue;
     }
 
@@ -190,28 +203,64 @@ int is_ipv6_str_valid(char *base, int len) {
     }
   }
 
-  if (!has_wilcard) {
-    if (!has_ipv4) {
-      int pattern[] = {OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS, COL,
-                       OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS};
-      const int pattern_len = sizeof(pattern) / sizeof(pattern[0]);
-      if (n_tokens != pattern_len) {
+  if (has_wilcard > 1) {
+    return 0;
+  }
+
+  if (has_wilcard) {
+    if (has_ipv4) {
+      int pattern[] = {OCTETS, DOT, OCTETS, DOT, OCTETS, DOT, OCTETS};
+      const int n_patterns = sizeof(pattern) / sizeof(pattern[0]);
+      if (n_tokens < 8) {
         return 0;
       }
-      for (int i = 0; i < n_tokens; ++i) {
-        if (pattern[i] != tokens[i].token_type) {
+      for (int i = 0; i < n_patterns; ++i) {
+        int *pt = &pattern[i];
+        ipstr_token_t *tk = &tokens[n_tokens + i - 7];
+        if (tk->token_type != *pt) {
+          return 0;
+        }
+        if (*pt == OCTETS) {
+          if (!is_v4_segment_buf_valid(tk->buf, tk->buflen)) {
+            return 0;
+          }
+        }
+      }
+      ipstr_token_t *end_tk = &tokens[n_tokens - 7];
+      ipstr_token_t *start_tk = &tokens[0];
+      if (start_tk == end_tk) {
+        return 0;
+      }
+      while (start_tk < end_tk) {
+        if (start_tk->token_type != OCTETS && start_tk->token_type != COL) {
           return 0;
         }
       }
+
       return 1;
-    } else {
-      // todo
     }
   } else {
     if (has_ipv4) {
-      // todo
+      int pattern[] = {OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS, COL,
+                       OCTETS, DOT, OCTETS, DOT, OCTETS, DOT, OCTETS};
+      if (!test_pattern(pattern, sizeof(pattern) / sizeof(pattern[0]), tokens,
+                        n_tokens)) {
+        return 0;
+      }
+      ipstr_token_t *tk = &tokens[n_tokens - 1];
+      for (int i = 0; i < 4; ++i) {
+        if (!is_v4_segment_buf_valid(tk->buf, tk->buflen)) {
+          return 0;
+        }
+        tk = &tk[-2];
+      }
+      return 1;
     } else {
-      // todo
+      int pattern[] = {OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS, COL,
+                       OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS};
+
+      return test_pattern(pattern, sizeof(pattern) / sizeof(pattern[0]), tokens,
+                          n_tokens);
     }
   }
 
