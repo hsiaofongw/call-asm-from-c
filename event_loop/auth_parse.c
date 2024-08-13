@@ -76,13 +76,16 @@ enum IPStrSegType {
   COL = 1,
 
   // hex segment in ipv6 literals, e.g.: 'abcd' '192'
-  OCTETS = 2,
+  OCTETS,
+
+  // decimal, such as '192', '168', '1', '101'
+  DEC,
 
   // wildcard mark in ipv6 literals, e.g.: '::'
-  WILDCARD = 3,
+  WILDCARD,
 
   // dot in ipv4 nested in ipv6 literals, e.g.: '.'
-  DOT = 4,
+  DOT,
 };
 
 typedef struct ipstr_token_ {
@@ -110,13 +113,19 @@ int is_hex(char c) {
   return 0;
 }
 
-int is_v4_segment_buf_valid(char *buf, int len) {
+int is_decimal(char *buf, int len) {
   for (int i = 0; i < len; ++i) {
     if (!isdigit(buf[i])) {
       return 0;
     }
   }
   return 1;
+}
+
+void try_convert_octets_to_dec(ipstr_token_t *token) {
+  if (token->token_type == OCTETS && is_decimal(token->buf, token->buflen)) {
+    token->token_type = DEC;
+  }
 }
 
 // 对 ipv6 string 进行 tokenize，结果写入 tokens，当成功时返回 tokens
@@ -156,6 +165,10 @@ int tokenize_ipv6_str(ipstr_token_t *tokens, int max_n_segs, char *base,
       tokens[n_segs].token_type = OCTETS;
       ++n_segs;
     } else if (*head == '.') {
+      if (n_segs > 0) {
+        try_convert_octets_to_dec(&tokens[n_segs - 1]);
+      }
+
       tokens[n_segs].buf[0] = '.';
       tokens[n_segs].buflen = 1;
       tokens[n_segs].token_type = DOT;
@@ -163,6 +176,10 @@ int tokenize_ipv6_str(ipstr_token_t *tokens, int max_n_segs, char *base,
     } else {
       return 0;
     }
+  }
+
+  if (n_segs > 0) {
+    try_convert_octets_to_dec(&tokens[n_segs - 1]);
   }
 
   return n_segs;
@@ -191,84 +208,95 @@ int is_ipv6_str_valid(char *base, int len) {
     return 0;
   }
 
-  int has_ipv4 = 0, has_wilcard = 0;
+  int n_octets = 0, n_cols = 0, n_wildcards = 0, n_decs = 0, n_dots = 0;
   for (int i = 0; i < n_tokens; ++i) {
-    if (tokens[i].token_type == WILDCARD) {
-      ++has_wilcard;
-      continue;
-    }
-
-    if (tokens[i].token_type == DOT) {
-      has_ipv4 = 1;
+    switch (tokens[i].token_type) {
+      case OCTETS:
+        ++n_octets;
+        break;
+      case COL:
+        ++n_cols;
+        break;
+      case WILDCARD:
+        ++n_wildcards;
+        break;
+      case DEC:
+        ++n_decs;
+        break;
+      case DOT:
+        ++n_dots;
+        break;
+      default:
+        return 0;
     }
   }
 
-  if (has_wilcard > 1) {
+  if (!(n_wildcards == 0 || n_wildcards == 1)) {
     return 0;
   }
 
-  if (has_wilcard) {
-    if (has_ipv4) {
-      int pattern[] = {OCTETS, DOT, OCTETS, DOT, OCTETS, DOT, OCTETS};
-      const int n_patterns = sizeof(pattern) / sizeof(pattern[0]);
-      if (n_tokens < 8) {
-        return 0;
-      }
-      for (int i = 0; i < n_patterns; ++i) {
-        int *pt = &pattern[i];
-        ipstr_token_t *tk = &tokens[n_tokens + i - 7];
-        if (tk->token_type != *pt) {
-          return 0;
-        }
-        if (*pt == OCTETS) {
-          if (!is_v4_segment_buf_valid(tk->buf, tk->buflen)) {
-            return 0;
-          }
-        }
-      }
-      ipstr_token_t *end_tk = &tokens[n_tokens - 7];
-      ipstr_token_t *start_tk = &tokens[0];
-      if (start_tk == end_tk) {
-        return 0;
-      }
-      while (start_tk < end_tk) {
-        if (start_tk->token_type != OCTETS && start_tk->token_type != COL) {
-          return 0;
-        }
-      }
-
-      return 1;
-    }
-  } else {
-    if (has_ipv4) {
-      int pattern[] = {OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS, COL,
-                       OCTETS, DOT, OCTETS, DOT, OCTETS, DOT, OCTETS};
-      if (!test_pattern(pattern, sizeof(pattern) / sizeof(pattern[0]), tokens,
-                        n_tokens)) {
-        return 0;
-      }
-      ipstr_token_t *tk = &tokens[n_tokens - 1];
-      for (int i = 0; i < 4; ++i) {
-        if (!is_v4_segment_buf_valid(tk->buf, tk->buflen)) {
-          return 0;
-        }
-        tk = &tk[-2];
-      }
-      return 1;
-    } else {
-      int pattern[] = {OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS, COL,
-                       OCTETS, COL, OCTETS, COL, OCTETS, COL, OCTETS};
-
-      return test_pattern(pattern, sizeof(pattern) / sizeof(pattern[0]), tokens,
-                          n_tokens);
-    }
+  if (!(n_dots == 0 || n_dots == 3)) {
+    return 0;
   }
 
-  ipstr_token_t *head = &tokens[0], *end = &tokens[n_tokens];
+  if (!(n_decs == 4 || n_decs == 0)) {
+    return 0;
+  }
+
+  ipstr_token_t *head = tokens, *end = &tokens[n_tokens];
+  if (head >= end) {
+    return 0;
+  }
+
   while (head < end) {
+    ipstr_token_t *next = &head[1];
+    if (head->token_type == OCTETS) {
+      if (next == end) {
+        break;
+      }
+
+      if ((next->token_type == COL || next->token_type == WILDCARD)) {
+        head = &head[2];
+        continue;
+      }
+
+      return 0;
+    } else if (head->token_type == DEC) {
+      if (next == end) {
+        break;
+      }
+
+      if (next->token_type == DOT) {
+        head = &head[2];
+        continue;
+      }
+
+      return 0;
+    } else if (head == tokens && head->token_type == WILDCARD) {
+      if (next == end) {
+        return 1;
+      } else if (next->token_type == OCTETS || next->token_type == DEC) {
+        head = &head[1];
+        continue;
+      } else {
+        return 0;
+      }
+    } else {
+      return 0;
+    }
   }
 
-  int n_wilcards = 0;
+  if (n_wildcards == 0 && n_dots == 0) {
+    return n_octets == 8;
+  } else if (n_wildcards == 0 && n_dots == 3) {
+    return n_octets == 6 && n_decs == 4;
+  } else if (n_wildcards == 1 && n_dots == 0) {
+    return n_octets <= 7;
+  } else if (n_wildcards == 1 && n_dots == 3) {
+    return n_octets <= 5;
+  } else {
+    return 0;
+  }
 }
 
 int is_dns_label_valid(char *base, int len) {}
