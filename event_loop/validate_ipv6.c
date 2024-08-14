@@ -102,92 +102,57 @@ int is_ipv6_str_valid(char *base, int len) {
   int tokens[20];
   const int max_n_segs = sizeof(tokens) / sizeof(tokens[0]);
   int n_tokens = tokenize_ipv6_str(tokens, max_n_segs, base, len);
-  if (n_tokens == 0) {
+  int *head = tokens, *end = &tokens[n_tokens];
+  if (head >= end) {
     return 0;
   }
-
-  int n_octets = 0, n_cols = 0, n_wildcards = 0, n_decs = 0, n_dots = 0;
-  for (int i = 0; i < n_tokens; ++i) {
-    switch (tokens[i]) {
-      case OCTETS:
-        ++n_octets;
-        break;
-      case COL:
-        ++n_cols;
-        break;
-      case WILDCARD:
-        ++n_wildcards;
-        break;
-      case DEC:
-        ++n_decs;
-        break;
-      case DOT:
-        ++n_dots;
-        break;
-      default:
-        return 0;
-    }
-  }
-
-  if (!(n_wildcards == 0 || n_wildcards == 1)) {
-    return 0;
-  }
-
-  if (!(n_dots == 0 || n_dots == 3)) {
-    return 0;
-  }
-
-  if (!(n_decs == 4 || n_decs == 0)) {
-    return 0;
-  }
-
+  int n_octets = 0, n_wildcards = 0, n_decs = 0;
   while (head < end) {
-    ipstr_token_t *next = &head[1];
-    if (head->token_type == OCTETS) {
-      if (next == end) {
-        break;
-      }
-
-      if ((next->token_type == COL || next->token_type == WILDCARD)) {
-        head = &head[2];
-        continue;
-      }
-
-      return 0;
-    } else if (head->token_type == DEC) {
-      if (next == end) {
-        break;
-      }
-
-      if (next->token_type == DOT) {
-        head = &head[2];
-        continue;
-      }
-
-      return 0;
-    } else if (head == tokens && head->token_type == WILDCARD) {
-      if (next == end) {
+    int *next = &head[1];
+    if (head == tokens && *head == WILDCARD) {
+      if (next >= end) {
         return 1;
-      } else if (next->token_type == OCTETS || next->token_type == DEC) {
-        head = &head[1];
-        continue;
-      } else {
-        return 0;
       }
+      ++n_wildcards;
+      if (*next == OCTETS || *head == DEC) {
+        ++head;
+        continue;
+      }
+      return 0;
+    } else if (*head == OCTETS) {
+      ++n_octets;
+      if (next >= end) {
+        return (n_decs == 0 && n_wildcards == 1 && n_octets <= 7) ||
+               (n_decs == 0 && n_wildcards == 0 && n_octets == 8);
+      }
+      if (*next == COL) {
+        head = &head[2];
+        continue;
+      }
+      if (*next == WILDCARD) {
+        head = &head[2];
+        ++n_wildcards;
+        if (n_wildcards > 1) {
+          return 0;
+        }
+        continue;
+      }
+      return 0;
+    } else if (*head == DEC) {
+      if (next == end) {
+        return (n_decs == 4 && n_wildcards == 1 && n_octets <= 5) ||
+               (n_decs == 4 && n_wildcards == 0 && n_octets == 6);
+      }
+      if (*next == DOT) {
+        ++n_decs;
+        head = &head[2];
+        continue;
+      }
+      return 0;
     } else {
       return 0;
     }
   }
 
-  if (n_wildcards == 0 && n_dots == 0) {
-    return n_octets == 8;
-  } else if (n_wildcards == 0 && n_dots == 3) {
-    return n_octets == 6 && n_decs == 4;
-  } else if (n_wildcards == 1 && n_dots == 0) {
-    return n_octets <= 7;
-  } else if (n_wildcards == 1 && n_dots == 3) {
-    return n_octets <= 5;
-  } else {
-    return 0;
-  }
+  return 0;
 }
