@@ -1,4 +1,19 @@
+#include <limits.h>
+#include <netinet/in.h>
 #include <stdlib.h>
+#include <string.h>
+
+int ptr_diff(void *a, void *b) {
+  long addr_a = (long)a;
+  long addr_b = (long)b;
+
+  long diff = addr_a - addr_b;
+  if (diff < INT_MIN || diff > INT_MAX) {
+    exit(1);
+  }
+
+  return (int)diff;
+}
 
 enum IPStrSegType {
   // column seperator in ipv6 literals, e.g.: ':'
@@ -17,124 +32,74 @@ enum IPStrSegType {
   DOT,
 };
 
-typedef struct ipstr_token_ {
-  // See IPStrSegType
-  int token_type;
-
-  // buffer to store characters in this segment
-  char buf[4];
-
-  // number of characters that is already stored in the buffer
-  int buflen;
-
-} ipstr_token_t;
-
-int is_hex(char c) {
-  char hex_digits[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a',
-                       'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F'};
-
-  for (int i = 0; i < sizeof(hex_digits); ++i) {
-    if (hex_digits[i] == c) {
-      return 1;
-    }
-  }
-
-  return 0;
-}
-
-int is_byte_decimal(char *buf, int len) {
-  if (len <= 0 || len > 3) {
-    return 0;
-  }
-
-  char parse_int_buf[] = {0, 0, 0, 0};
-  for (int i = 0; i < len; ++i) {
-    char c = buf[i];
-    if (!isdigit(c)) {
-      return 0;
-    }
-    parse_int_buf[i] = c;
-  }
-
-  char *endptr;
-  long val = strtol(parse_int_buf, &endptr, 10);
-  if (!(endptr != NULL && *endptr == 0)) {
-    return 0;
-  }
-
-  if (val < 0 || val > 255) {
-    return 0;
-  }
-
-  return 1;
-}
-
-void try_convert_octets_to_dec(ipstr_token_t *token) {
-  if (token->token_type == OCTETS &&
-      is_byte_decimal(token->buf, token->buflen)) {
-    token->token_type = DEC;
-  }
-}
-
 // 对 ipv6 string 进行 tokenize，结果写入 tokens，当成功时返回 tokens
 // 个数，失败时返回 0。 base 指向被 tokenize 字符串的基地址，len 表示被 tokenize
 // 字符串的长度（不包括末尾的 0）。
-int tokenize_ipv6_str(ipstr_token_t *tokens, int max_n_segs, char *base,
-                      int len) {
-  int n_segs = 0;
-  const int max_bufsize = sizeof(tokens[0].buf);
-  char *head = base, *end = &base[len];
-  while (head < end) {
-    if (n_segs >= max_n_segs) {
-      return 0;
-    }
+// 只接受 octets 'abcd09a', decimal '123', column ':', doublecolumn '::', dot
+// '.' 这几种 token，其余的会报错。
+int tokenize_ipv6_str(int *tokens, int max_n_segs, char *base, int len) {
+  char *endptr;
+  long parsed_val;
+  char test_buf[INET6_ADDRSTRLEN];
+  if (len >= INET6_ADDRSTRLEN) {
+    return 0;
+  }
 
-    if (head + 1 < end && strncmp(head, "::", 2) == 0) {
-      memcpy(tokens[n_segs].buf, "::", 2);
-      tokens[n_segs].buflen = 2;
-      tokens[n_segs].token_type = WILDCARD;
-      ++n_segs;
-      head = &head[2];
+  memcpy(test_buf, base, len);
+  test_buf[len] = 0;
+
+  int *tokens_begin = tokens;
+  int *tokens_end = &tokens[max_n_segs];
+
+  char *head = test_buf, *end = &test_buf[len];
+  while (head < end) {
+    if (tokens >= tokens_end) {
+      return 0;
     } else if (*head == ':') {
-      tokens[n_segs].buf[0] = ':';
-      tokens[n_segs].buflen = 1;
-      tokens[n_segs].token_type = COL;
-      ++n_segs;
-      ++head;
-    } else if (is_hex(*head)) {
-      char *buf = tokens[n_segs].buf;
-      int *buflen = &(tokens[n_segs].buflen);
-      *buflen = 0;
-      while (head < end && is_hex(*head) && *buflen < max_bufsize) {
-        buf[*buflen] = *head;
-        ++(*buflen);
+      *tokens++ = COL;
+
+      char *next = &head[1];
+      if (next < end && *next == ':') {
+        *tokens++ = WILDCARD;
         ++head;
       }
-      tokens[n_segs].token_type = OCTETS;
-      ++n_segs;
+
+      ++head;
     } else if (*head == '.') {
-      if (n_segs > 0) {
-        try_convert_octets_to_dec(&tokens[n_segs - 1]);
+      *tokens++ = DOT;
+      ++head;
+    } else {
+      strtol(head, &endptr, 16);
+      if (endptr != head) {
+        int buflen = ptr_diff(endptr, head);
+        if (buflen > 4) {
+          return 0;
+        }
+
+        *tokens++ = OCTETS;
+        head = endptr;
+        continue;
       }
 
-      tokens[n_segs].buf[0] = '.';
-      tokens[n_segs].buflen = 1;
-      tokens[n_segs].token_type = DOT;
-      ++n_segs;
-    } else {
+      parsed_val = strtol(head, &endptr, 10);
+      if (endptr != head) {
+        if (parsed_val < 0 || parsed_val > UCHAR_MAX) {
+          return 0;
+        }
+
+        *tokens++ = DEC;
+        head = endptr;
+        continue;
+      }
       return 0;
     }
   }
 
-  if (n_segs > 0) {
-    try_convert_octets_to_dec(&tokens[n_segs - 1]);
-  }
-
-  return n_segs;
+  return ptr_diff(tokens, tokens_begin);
 }
 
 int is_ipv6_str_valid(char *base, int len) {
-  ipstr_token_t tokens[20];
+  int tokens[20];
   const int max_n_segs = sizeof(tokens) / sizeof(tokens[0]);
   int n_tokens = tokenize_ipv6_str(tokens, max_n_segs, base, len);
   if (n_tokens == 0) {
@@ -143,7 +108,7 @@ int is_ipv6_str_valid(char *base, int len) {
 
   int n_octets = 0, n_cols = 0, n_wildcards = 0, n_decs = 0, n_dots = 0;
   for (int i = 0; i < n_tokens; ++i) {
-    switch (tokens[i].token_type) {
+    switch (tokens[i]) {
       case OCTETS:
         ++n_octets;
         break;
@@ -173,11 +138,6 @@ int is_ipv6_str_valid(char *base, int len) {
   }
 
   if (!(n_decs == 4 || n_decs == 0)) {
-    return 0;
-  }
-
-  ipstr_token_t *head = tokens, *end = &tokens[n_tokens];
-  if (head == end) {
     return 0;
   }
 
