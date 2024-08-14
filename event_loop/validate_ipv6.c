@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <limits.h>
 #include <netinet/in.h>
 #include <stdlib.h>
@@ -31,6 +32,20 @@ enum IPStrSegType {
   // dot in ipv4 nested in ipv6 literals, e.g.: '.'
   DOT,
 };
+
+int is_hex(char c) {
+  if (isdigit(c)) {
+    return 1;
+  }
+  char hex_chars[] = {'a', 'b', 'c', 'd', 'e', 'f',
+                      'A', 'B', 'C', 'D', 'E', 'F'};
+  for (int i = 0; i < sizeof(hex_chars); ++i) {
+    if (hex_chars[i] == c) {
+      return 1;
+    }
+  }
+  return 0;
+}
 
 // 对 ipv6 string 进行 tokenize，结果写入 tokens，当成功时返回 tokens
 // 个数，失败时返回 0。 base 指向被 tokenize 字符串的基地址，len 表示被 tokenize
@@ -69,6 +84,20 @@ int tokenize_ipv6_str(int *tokens, int max_n_segs, char *base, int len) {
       *tokens++ = DOT;
       ++head;
     } else {
+      // strtol also left-trims spaces, and it treats '-', '+', '0x' prefix as
+      // normal, doing so leads to false-positives (it would treat an illegal
+      // octects group or a illeagle decimal as 'legal'), so in here we exclude
+      // all such cases before trying to parse (or validate) octets and
+      // decimals.
+      if (isspace(*head) || *head == '+' || *head == '-') {
+        return 0;
+      }
+
+      char *next = &head[1];
+      if (next < end && *head == '0' && *next == 'x') {
+        return 0;
+      }
+
       strtol(head, &endptr, 16);
       if (endptr != head) {
         int buflen = ptr_diff(endptr, head);
@@ -81,9 +110,15 @@ int tokenize_ipv6_str(int *tokens, int max_n_segs, char *base, int len) {
         continue;
       }
 
+      if (*head == '0') {
+        // decimal shall not begins with leading '0'.
+        return 0;
+      }
+
       parsed_val = strtol(head, &endptr, 10);
       if (endptr != head) {
-        if (parsed_val < 0 || parsed_val > UCHAR_MAX) {
+        if (ptr_diff(endptr, head) > 3 || parsed_val < 0 ||
+            parsed_val > UCHAR_MAX) {
           return 0;
         }
 
