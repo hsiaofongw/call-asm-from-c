@@ -23,5 +23,8 @@
     "ringbuf.h": "c",
     "pkt.h": "c",
     "priority_queue.h": "c"
+  },
+  "[c]": {
+    "editor.formatOnSave": true
   }
 }
