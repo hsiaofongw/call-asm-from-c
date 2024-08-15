@@ -1,45 +1,49 @@
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
 int is_ipv4_str_valid(char *base, int len) {
-  if (len <= 0) {
-    return 0;
-  }
-
   char test_buf[16];
-  if (len > sizeof(test_buf) - 1) {
+
+  if (len <= 0 || len > sizeof(test_buf) - 1) {
     return 0;
   }
 
-  memset(test_buf, 0, sizeof(test_buf));
   memcpy(test_buf, base, len);
+  test_buf[len] = 0;
 
-  char *head = test_buf;
-  char *last_cursor;
-
-  for (int i = 0; i < 4; ++i) {
-    if (head >= &test_buf[len]) {
+  char *head = test_buf, *end = &test_buf[len], *last_cursor;
+  int n_octets = 0;
+  while (head < end) {
+    char *next = &head[1];
+    if (next == end && isdigit(*head)) {
+      ++n_octets;
+      ++head;
+    } else if (*head == '0' && next < end && *next == '.') {
+      ++n_octets;
+      head = &head[2];
+    } else if (isdigit(*head) && *head != '0') {
+      char *dec_begin = head;
+      while (head < end && isdigit(*head)) {
+        ++head;
+      }
+      if (head == end) {
+        ++n_octets;
+        break;
+      }
+      if (*head != '.') {
+        return 0;
+      }
+      long val = strtol(dec_begin, NULL, 10);
+      if (val < 0 || val > 255) {
+        return 0;
+      }
+      ++n_octets;
+      ++head;
+    } else {
       return 0;
     }
-
-    long val = strtol(head, &last_cursor, 10);
-
-    if (last_cursor == head) {
-      return 0;
-    }
-
-    if (i < 3 && *last_cursor != '.') {
-      return 0;
-    } else if (i == 3 && *last_cursor != 0) {
-      return 0;
-    }
-
-    if (val < 0 || val > 255) {
-      return 0;
-    }
-
-    head = &last_cursor[1];
   }
 
-  return 1;
+  return n_octets == 4;
 }

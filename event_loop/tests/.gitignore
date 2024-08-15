@@ -2,3 +2,4 @@ test_queue
 test_pq
 test_parse
 test_ipaddr_parse
+test_strtol
