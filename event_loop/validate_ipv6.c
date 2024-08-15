@@ -17,6 +17,9 @@ int is_hex(char c) {
   return 0;
 }
 
+// An RFC4291 IPv6 text representation validator.
+// Returns non-zero if the input string [base, base+len) is valid, otherwise
+// returns 0.
 int is_ipv6_str_valid(char *base, int len) {
   char test_buf[INET6_ADDRSTRLEN];
   if (len <= 0 || len > sizeof(test_buf) - 1) {
@@ -76,23 +79,33 @@ int is_ipv6_str_valid(char *base, int len) {
     }
   }
 
+  // According to RFC4291 section 2.2
   if (n_wildcard == 1) {
+    // Clause 2, the "compressed" form.
     if (n_decs == 4) {
+      // Clause 3, IPv6-in-IPv4.
       return n_words <= 5;
     } else if (n_decs == 0) {
+      // Compressed, but no IPv4 nested in.
       return n_words <= 7;
     } else {
+      // Invalid.
       return 0;
     }
   } else if (n_wildcard == 0) {
     if (n_decs == 0) {
+      // Clause 1, no-compressed, no-ipv4. exactly 8 hex groups.
       return n_words == 8;
     } else if (n_decs == 4) {
+      // Clause 3, IPv4-in-IPv6, no-compressed. exactly 6 hex groups and 4
+      // decimals.
       return n_words == 6;
     } else {
+      // Invalid.
       return 0;
     }
   } else {
+    // Invalid.
     return 0;
   }
 }
