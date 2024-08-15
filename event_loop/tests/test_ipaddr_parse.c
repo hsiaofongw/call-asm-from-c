@@ -31,7 +31,12 @@ void test_ipv4() {
 }
 
 void test_ipv6() {
-  char *addresses[] = {"192.168.255.1", "a192", "1::2", "1234", "1"};
+  char *addresses[] = {"192.168.255.1", "a192",        "1::2",
+                       "1234",          "1",           "::",
+                       "12::",          "1234::",      "12:123:1234::1",
+                       "abcd:e",        "hello,world", "hi.hello",
+                       "::12345",       "::1234",      "::123:abc",
+                       "::12345:ab"};
   const int n_addr = sizeof(addresses) / sizeof(char *);
   for (int i = 0; i < n_addr; ++i) {
     char *addr = addresses[i];
@@ -42,7 +47,9 @@ void test_ipv6() {
 }
 
 int main() {
+  printf("\n\nValidating is_ipv4_str_valid function:\n");
   test_ipv4();
-  // test_ipv6();
+  printf("\n\nValidating is_ipv6_str_valid function:\n");
+  test_ipv6();
   return 0;
 }
