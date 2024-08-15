@@ -58,6 +58,9 @@ int is_ipv6_str_valid(char *base, int len) {
         if (!is_all_decimal) {
           return 0;
         }
+        if (seg_len > 1 && *num_begin == '0') {
+          return 0;
+        }
         long val = strtol(num_begin, NULL, 10);
         if (val < 0 || val > 255) {
           return 0;
@@ -68,6 +71,7 @@ int is_ipv6_str_valid(char *base, int len) {
         if (seg_len > 4) {
           return 0;
         }
+        ++n_words;
         ++head;
         if (head < end && *head == ':') {
           ++head;

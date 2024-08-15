@@ -31,11 +31,22 @@ void test_ipv4() {
 }
 
 void test_ipv6() {
-  char *addresses[] = {"192.168.255.1", "a192",        "1::2",
-                       "1234",          "1",           "::",
-                       "12::",          "1234::",      "12:123:1234::1",
-                       "abcd:e",        "hello,world", "hi.hello",
-                       "::12345",       "::1234",      "::123:abc",
+  char *addresses[] = {"2001:0db8:85a3:0:0:8A2E:0370:7334",
+                       "192.168.255.1",
+                       "a192",
+                       "1::2",
+                       "1234",
+                       "1",
+                       "::",
+                       "12::",
+                       "1234::",
+                       "12:123:1234::1",
+                       "abcd:e",
+                       "hello,world",
+                       "hi.hello",
+                       "::12345",
+                       "::1234",
+                       "::123:abc",
                        "::12345:ab"};
   const int n_addr = sizeof(addresses) / sizeof(char *);
   for (int i = 0; i < n_addr; ++i) {
