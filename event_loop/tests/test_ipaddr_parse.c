@@ -5,13 +5,16 @@
 #include "../validate_ipv6.h"
 
 void test_ipv4() {
-  char *addresses[] = {"192.168.3.101",
+  char *addresses[] = {"192.168.1.1.",
+                       "192.168.3.101",
                        "a",
                        "",
                        "1234",
                        "1234.1",
                        "12.",
                        "1.",
+                       "",
+                       ".",
                        "192.168.1.1.1",
                        "192.168.1.",
                        "192.01.123",
@@ -26,7 +29,7 @@ void test_ipv4() {
     char *addr = addresses[i];
     int len = strlen(addr);
     result = is_ipv4_str_valid(addr, len);
-    printf("addr: %s length: %d result: %d\n", addr, len, result);
+    printf("addr: \"%s\" length: %d result: %d\n", addr, len, result);
   }
 }
 
@@ -38,6 +41,7 @@ void test_ipv6() {
                        "1::2",
                        "1234",
                        "1",
+                       "",
                        "::",
                        "12::",
                        "1234::",
@@ -54,7 +58,7 @@ void test_ipv6() {
     char *addr = addresses[i];
     int len = strlen(addr);
     int result = is_ipv6_str_valid(addr, len);
-    printf("addr: %s length: %d result: %d\n", addr, len, result);
+    printf("addr: \"%s\" length: %d result: %d\n", addr, len, result);
   }
 }
 

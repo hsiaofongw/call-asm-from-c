@@ -17,31 +17,29 @@ int is_ipv4_str_valid(char *base, int len) {
   while (head < end) {
     char *next = &head[1];
     if (isdigit(*head)) {
-      if (next < end && *next == '.') {
-        ++n_octets;
-        head = &head[2];
-      } else if (next == end) {
-        ++n_octets;
-        break;
-      } else if (*head != '0') {
-        char *dec_begin = head;
-        while (head < end && isdigit(*head)) {
-          ++head;
-        }
-
-        if (head < end && *head != '.') {
-          return 0;
-        }
-
-        long val = strtol(dec_begin, NULL, 10);
-        if (val < 0 || val > 255) {
-          return 0;
-        }
-        ++n_octets;
+      char *dec_begin = head;
+      int seg_len = 0;
+      while (head < end && isdigit(*head)) {
         ++head;
-      } else {
+        ++seg_len;
+      }
+
+      if (seg_len > 1 && *dec_begin == '0') {
         return 0;
       }
+
+      int next_is_dot = &head[1] < end && head[0] == '.';
+      int next_is_eof = head == end;
+      if (!(next_is_dot || next_is_eof)) {
+        return 0;
+      }
+
+      long val = strtol(dec_begin, NULL, 10);
+      if (val < 0 || val > 255) {
+        return 0;
+      }
+      ++n_octets;
+      ++head;
     } else {
       return 0;
     }
