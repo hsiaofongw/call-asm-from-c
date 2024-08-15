@@ -1,0 +1,12 @@
+{
+    "configurations": [
+    {
+        "type": "lldb",
+        "request": "launch",
+        "name": "Launch",
+        "program": "${workspaceFolder}/event_loop/tests/test_pq",
+        "args": [],
+        "cwd": "${workspaceFolder}"
+    }
+    ]
+}
