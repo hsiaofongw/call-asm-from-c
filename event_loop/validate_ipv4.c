@@ -24,15 +24,14 @@ int is_ipv4_str_valid(char *base, int len) {
       return 0;
     }
 
-    if (i < 3 && *last_cursor != '.') {
-      return 0;
-    } else if (*last_cursor != 0) {
+    if ((i == 3 && *last_cursor != 0) || *last_cursor != '.') {
       return 0;
     }
 
     if (val < 0 || val > 255) {
       return 0;
     }
+    
     head = &last_cursor[1];
   }
 

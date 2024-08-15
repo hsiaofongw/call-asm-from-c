@@ -7,6 +7,9 @@ test_queue: test_queue.c ../queue.c ../ringbuf.c
 test_pq: test_pq.c ../priority_queue.c
 	clang-18 -O0 -g3 -o $@ $^
 
+test_ipaddr_parse: test_ipaddr_parse.c ../validate_ipv4.c ../validate_ipv6.c
+	clang-18 -O0 -g3 -o $@ $^
+
 clean:
 	rm -f file1.bin
 	rm -f file2.bin

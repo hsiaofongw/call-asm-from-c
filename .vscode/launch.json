@@ -1,12 +1,20 @@
 {
     "configurations": [
-    {
-        "type": "lldb",
-        "request": "launch",
-        "name": "Launch",
-        "program": "${workspaceFolder}/event_loop/tests/test_pq",
-        "args": [],
-        "cwd": "${workspaceFolder}"
-    }
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "test_pq",
+            "program": "${workspaceFolder}/event_loop/tests/test_pq",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "test_ipaddr_parse",
+            "program": "${workspaceFolder}/event_loop/tests/test_ipaddr_parse",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
     ]
 }
