@@ -18,20 +18,26 @@ int is_ipv4_str_valid(char *base, int len) {
   char *last_cursor;
 
   for (int i = 0; i < 4; ++i) {
+    if (head >= &test_buf[len]) {
+      return 0;
+    }
+
     long val = strtol(head, &last_cursor, 10);
 
     if (last_cursor == head) {
       return 0;
     }
 
-    if ((i == 3 && *last_cursor != 0) || *last_cursor != '.') {
+    if (i < 3 && *last_cursor != '.') {
+      return 0;
+    } else if (i == 3 && *last_cursor != 0) {
       return 0;
     }
 
     if (val < 0 || val > 255) {
       return 0;
     }
-    
+
     head = &last_cursor[1];
   }
 
