@@ -48,12 +48,18 @@ int is_ipv6_str_valid(char *base, int len) {
         ++seg_len;
       }
 
-      if (head < end && *head != '.' && *head != ':') {
+      int next_is_wilcard = &head[1] < end && head[0] == ':' && head[1] == ':';
+      int next_is_dot = &head[1] < end && head[0] == '.';
+      int next_is_col = &head[1] < end && head[0] == ':';
+      int next_is_eof = head == end;
+
+      if (!(next_is_wilcard || next_is_dot || next_is_col || next_is_eof)) {
         return 0;
       }
 
-      int is_v4_decimal =
-          (head == end && is_prev_v4_decimal) || (head < end && *head == '.');
+      int is_v4_decimal = (next_is_eof && is_prev_v4_decimal) || next_is_dot;
+      int is_v6_octets = (next_is_eof && !is_prev_v4_decimal) || next_is_col ||
+                         next_is_wilcard;
       if (is_v4_decimal) {
         if (!is_all_decimal) {
           return 0;
@@ -67,7 +73,8 @@ int is_ipv6_str_valid(char *base, int len) {
         }
         ++n_decs;
         ++head;
-      } else {
+
+      } else if (is_v6_octets) {
         if (seg_len > 4) {
           return 0;
         }
@@ -77,6 +84,9 @@ int is_ipv6_str_valid(char *base, int len) {
           ++head;
           ++n_wildcard;
         }
+        continue;
+      } else {
+        return 0;
       }
     } else {
       return 0;
