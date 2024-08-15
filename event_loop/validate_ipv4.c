@@ -16,30 +16,32 @@ int is_ipv4_str_valid(char *base, int len) {
   int n_octets = 0;
   while (head < end) {
     char *next = &head[1];
-    if (next == end && isdigit(*head)) {
-      ++n_octets;
-      ++head;
-    } else if (*head == '0' && next < end && *next == '.') {
-      ++n_octets;
-      head = &head[2];
-    } else if (isdigit(*head) && *head != '0') {
-      char *dec_begin = head;
-      while (head < end && isdigit(*head)) {
-        ++head;
-      }
-      if (head == end) {
+    if (isdigit(*head)) {
+      if (next < end && *next == '.') {
+        ++n_octets;
+        head = &head[2];
+      } else if (next == end) {
         ++n_octets;
         break;
-      }
-      if (*head != '.') {
+      } else if (*head != '0') {
+        char *dec_begin = head;
+        while (head < end && isdigit(*head)) {
+          ++head;
+        }
+
+        if (head < end && *head != '.') {
+          return 0;
+        }
+
+        long val = strtol(dec_begin, NULL, 10);
+        if (val < 0 || val > 255) {
+          return 0;
+        }
+        ++n_octets;
+        ++head;
+      } else {
         return 0;
       }
-      long val = strtol(dec_begin, NULL, 10);
-      if (val < 0 || val > 255) {
-        return 0;
-      }
-      ++n_octets;
-      ++head;
     } else {
       return 0;
     }

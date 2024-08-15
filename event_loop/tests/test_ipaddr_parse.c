@@ -17,7 +17,9 @@ void test_ipv4() {
                        "192.01.123",
                        "192.618.1.0",
                        "255.255.255.255",
-                       "192.0.0.1"};
+                       "192.0.0.1",
+                       "0.0.0.0",
+                       "0.0.0.1"};
   const int n_addr = sizeof(addresses) / sizeof(char *);
   int result;
   for (int i = 0; i < n_addr; ++i) {
