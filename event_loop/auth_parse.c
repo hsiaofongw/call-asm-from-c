@@ -27,53 +27,6 @@ enum AF_VER {
   AFV_IPv6 = 6,
 };
 
-// See RFC section 2.3.1 "Preferred name syntax", and this implementation
-// relaxed the requirements for a DNS label: a leading character in a DNS label
-// could also be a digit but not just a alphabet.
-// We do so because in real world many people have realdy use DNS domain name
-// with all-digits label, for example `10086.cn` is not a RFC1035-compliant DNS
-// domain name but it's actually in use.
-int is_dns_label_valid(char *base, int len) {
-  if (len <= 0 || len > MAX_HOSTNAME_ALLOWED) {
-    return 0;
-  }
-
-  char *head = base, *end = &base[len];
-  while (head < end) {
-    if (isalnum(*head)) {
-      char *next = &head[1];
-      if (next == end) {
-        return 0;
-      } else if (*next == '.') {
-        head = &next[1];
-        continue;
-      } else if (isalnum(*next) || *next == '-') {
-        char *w_begin = head;
-        while (head < end && (isalnum(*head) || *head == '-')) {
-          ++head;
-        }
-
-        if ((head < end && *head == '.') || head == end) {
-          if (head > w_begin && head[-1] == '-') {
-            return 0;
-          }
-
-          head = &head[1];
-          continue;
-        } else {
-          return 0;
-        }
-      } else {
-        return 0;
-      }
-    } else {
-      return 0;
-    }
-  }
-
-  return end[-1] != '.';
-}
-
 int is_port_str_valid(char *base, int len) {}
 
 auth_parse_ctx *auth_parse_ctx_create() {
@@ -316,7 +269,7 @@ enum ParseResultStatus auth_parse_ctx_do_parse(auth_parse_ctx *ctx,
           return ErrHostnameLengthExceeded;
         }
 
-        if (!is_dns_label_valid(head, ctx->hostname_len)) {
+        if (!is_dns_name_valid(head, ctx->hostname_len)) {
           return ErrInvalidHost;
         }
 

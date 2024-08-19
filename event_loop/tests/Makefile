@@ -10,6 +10,9 @@ test_pq: test_pq.c ../priority_queue.c
 test_ipaddr_parse: test_ipaddr_parse.c ../validate_ipv4.c ../validate_ipv6.c
 	clang-18 -O0 -g3 -o $@ $^
 
+test_dns_validator: test_dns_validator.c ../validate_dns_name.c
+	clang-18 -O3 -g3 -o $@ $^
+
 test_strtol: test_strtol.c
 	clang-18 -O0 -g3 -o $@ $^
 
