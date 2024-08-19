@@ -30,6 +30,8 @@ int main() {
                     {.name = "hello-123.world", .result = 1},
                     {.name = "192.168.1.101.", .result = 0},
                     {.name = "1.1.1.1", .result = 1},
+                    {.name = "", .result = 0},
+                    {.name = "1", .result = 1},
                     {.name = long_label, .result = 0},
                     {.name = edge_case_label, .result = 1}};
 
