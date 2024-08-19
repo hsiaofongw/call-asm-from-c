@@ -9,7 +9,10 @@
 #define MAX_READ_CHUNK_SIZE 128
 #define MAX_NAME_LENGTH 32
 #define MAX_PORT_STR_LEN 5
-#define MAX_HOSTNAME_ALLOWED ((0x1UL) << 10)
+
+// See RFC1035 section 2.3.4 "Size limits"
+#define MAX_HOSTNAME_ALLOWED 255
+#define MAX_DNS_LABEL_LEN 63
 
 #define MAX_HEADER_VALUE_SIZE ((0x1UL) << 10)
 #define MAX_BODY_SIZE ((0x1UL) << 10)

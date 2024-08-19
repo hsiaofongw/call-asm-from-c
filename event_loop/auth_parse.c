@@ -27,34 +27,42 @@ enum AF_VER {
   AFV_IPv6 = 6,
 };
 
+// See RFC section 2.3.1 "Preferred name syntax", and this implementation
+// relaxed the requirements for a DNS label: a leading character in a DNS label
+// could also be a digit but not just a alphabet.
+// We do so because in real world many people have realdy use DNS domain name
+// with all-digits label, for example `10086.cn` is not a RFC1035-compliant DNS
+// domain name but it's actually in use.
 int is_dns_label_valid(char *base, int len) {
-  char test_buf[MAX_HOSTNAME_ALLOWED];
-  if (len <= 0 || len > sizeof(test_buf) - 1) {
+  if (len <= 0 || len > MAX_HOSTNAME_ALLOWED) {
     return 0;
   }
 
-  memcpy(test_buf, base, len);
-  test_buf[len] = 0;
-
-  char *head = test_buf, *end = &test_buf[len];
+  char *head = base, *end = &base[len];
   while (head < end) {
     if (isalnum(*head)) {
       char *next = &head[1];
-      if (next < end && *next == '.') {
-        head = &head[2];
+      if (next == end) {
+        return 0;
+      } else if (*next == '.') {
+        head = &next[1];
         continue;
-      } else if (next == end) {
-        return 1;
-      } else if (next < end && (isalnum(*next) || *next == '-')) {
+      } else if (isalnum(*next) || *next == '-') {
+        char *w_begin = head;
         while (head < end && (isalnum(*head) || *head == '-')) {
           ++head;
-          continue;
         }
-        if (head < end && *head != '.') {
+
+        if ((head < end && *head == '.') || head == end) {
+          if (head > w_begin && head[-1] == '-') {
+            return 0;
+          }
+
+          head = &head[1];
+          continue;
+        } else {
           return 0;
         }
-        head = &head[1];
-        continue;
       } else {
         return 0;
       }
@@ -63,7 +71,7 @@ int is_dns_label_valid(char *base, int len) {
     }
   }
 
-  return 1;
+  return end[-1] != '.';
 }
 
 int is_port_str_valid(char *base, int len) {}
