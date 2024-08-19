@@ -4,3 +4,5 @@ test_parse
 test_ipaddr_parse
 test_strtol
 test_dns_validator
+test_ipv4_validator
+test_ipv6_validator

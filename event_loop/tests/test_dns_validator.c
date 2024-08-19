@@ -1,12 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../validate_dns_name.h"
-
-typedef struct case_t {
-  char *name;
-  int result;
-} case_t;
+#include "../validate.h"
+#include "utils.h"
 
 int main() {
   char long_label[65];
@@ -21,29 +17,31 @@ int main() {
   }
   edge_case_label[sizeof(edge_case_label) - 1] = 0;
 
-  case_t cases[] = {{.name = "www.qq.com", .result = 1},
-                    {.name = "www.qq-", .result = 0},
-                    {.name = "123", .result = 1},
-                    {.name = "-123.0", .result = 0},
-                    {.name = "123-.0", .result = 0},
-                    {.name = "123-567.o", .result = 1},
-                    {.name = "hello-123.world", .result = 1},
-                    {.name = "192.168.1.101.", .result = 0},
-                    {.name = "1.1.1.1", .result = 1},
-                    {.name = "", .result = 0},
-                    {.name = "1", .result = 1},
-                    {.name = long_label, .result = 0},
-                    {.name = edge_case_label, .result = 1}};
+  str_case_t cases[] = {{.input = "www.qq.com", .expect = 1},
+                        {.input = "www.qq-", .expect = 0},
+                        {.input = "123", .expect = 1},
+                        {.input = "-123.0", .expect = 0},
+                        {.input = "123-.0", .expect = 0},
+                        {.input = "123-567.o", .expect = 1},
+                        {.input = "hello-123.world", .expect = 1},
+                        {.input = "192.168.1.101.", .expect = 0},
+                        {.input = "1.1.1.1", .expect = 1},
+                        {.input = "", .expect = 0},
+                        {.input = "1", .expect = 1},
+                        {.input = long_label, .expect = 0},
+                        {.input = edge_case_label, .expect = 1}};
 
-  const int nr_cases = sizeof(cases) / sizeof(case_t);
+  const int nr_cases = sizeof(cases) / sizeof(str_case_t);
+  int exit_code = 0;
   for (int i = 0; i < nr_cases; ++i) {
-    case_t *c = &cases[i];
-    size_t len = strlen(c->name);
+    str_case_t *c = &cases[i];
+    size_t len = strlen(c->input);
 
-    int result = is_dns_name_valid(c->name, len);
-    printf("[%d] \"%s\" (length: %lu) expected: %d actual: %d\n", i, c->name,
-           len, c->result, result);
+    int result = is_dns_name_valid(c->input, len);
+    printf("[%d] \"%s\" (length: %lu) expected: %d actual: %d\n", i, c->input,
+           len, c->expect, result);
+    exit_code = exit_code || (result != c->expect);
   }
 
-  return 0;
+  return exit_code;
 }

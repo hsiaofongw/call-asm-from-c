@@ -4,6 +4,103 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "limitations.h"
+
+int is_dns_name_valid(char *base, int len) {
+  if (len <= 0 || len > MAX_HOSTNAME_ALLOWED) {
+    return 0;
+  }
+
+  char *head = base, *end = &base[len];
+  int label_len = 0;
+  while (head < end) {
+    if (isalnum(*head)) {
+      label_len = 1;
+      char *next = &head[1];
+      if (next == end) {
+        return 1;
+      } else if (*next == '.') {
+        head = &next[1];
+        continue;
+      } else if (isalnum(*next) || *next == '-') {
+        char *w_begin = head;
+        --label_len;
+        while (head < end && (isalnum(*head) || *head == '-')) {
+          ++label_len;
+          ++head;
+        }
+
+        if ((head < end && *head == '.') || head == end) {
+          if (head > w_begin && head[-1] == '-') {
+            return 0;
+          }
+
+          if (label_len > MAX_DNS_LABEL_LEN) {
+            return 0;
+          }
+
+          head = &head[1];
+          continue;
+        } else {
+          return 0;
+        }
+      } else {
+        return 0;
+      }
+    } else {
+      return 0;
+    }
+  }
+
+  return end[-1] != '.';
+}
+
+int is_ipv4_str_valid(char *base, int len) {
+  char test_buf[16];
+
+  if (len <= 0 || len > sizeof(test_buf) - 1) {
+    return 0;
+  }
+
+  memcpy(test_buf, base, len);
+  test_buf[len] = 0;
+
+  char *head = test_buf, *end = &test_buf[len], *last_cursor;
+  int n_octets = 0;
+  while (head < end) {
+    char *next = &head[1];
+    if (isdigit(*head)) {
+      char *dec_begin = head;
+      int seg_len = 0;
+      while (head < end && isdigit(*head)) {
+        ++head;
+        ++seg_len;
+      }
+
+      if (seg_len > 1 && *dec_begin == '0') {
+        return 0;
+      }
+
+      int next_is_dot = &head[1] < end && head[0] == '.';
+      int next_is_eof = head == end;
+      if (!(next_is_dot || next_is_eof)) {
+        return 0;
+      }
+
+      long val = strtol(dec_begin, NULL, 10);
+      if (val < 0 || val > 255) {
+        return 0;
+      }
+      ++n_octets;
+      ++head;
+    } else {
+      return 0;
+    }
+  }
+
+  return n_octets == 4;
+}
+
 int is_hex(char c) {
   if (isdigit(c)) {
     return 1;
@@ -17,9 +114,6 @@ int is_hex(char c) {
   return 0;
 }
 
-// An RFC4291 IPv6 text representation validator.
-// Returns non-zero if the input string [base, base+len) is valid, otherwise
-// returns 0.
 int is_ipv6_str_valid(char *base, int len) {
   char test_buf[INET6_ADDRSTRLEN];
   if (len <= 0 || len > sizeof(test_buf) - 1) {
@@ -122,4 +216,40 @@ int is_ipv6_str_valid(char *base, int len) {
     // Invalid.
     return 0;
   }
+}
+
+int is_username_valid(char *base, int len) {
+  char *end = &base[len];
+  while (base < end) {
+    if (!isalnum(*base++)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+int is_port_str_valid(char *base, int len) {
+  if (len <= 0 || len > 5) {
+    return 0;
+  }
+  char test_buf[6];
+  memcpy(test_buf, base, len);
+  test_buf[len] = 0;
+  char *start = test_buf;
+  char *end = &test_buf[len];
+  if (isdigit(*start) && *start != '0') {
+    if (&start[1] < end && start[1] == 'x') {
+      return 0;
+    }
+    char *endptr;
+    long val = strtol(start, &endptr, 10);
+    if (*endptr != 0 || endptr == start) {
+      return 0;
+    }
+    if (val < 0 || val > 65535) {
+      return 0;
+    }
+  }
+
+  return 0;
 }

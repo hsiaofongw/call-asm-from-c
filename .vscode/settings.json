@@ -22,7 +22,10 @@
     "stdlib.h": "c",
     "ringbuf.h": "c",
     "pkt.h": "c",
-    "priority_queue.h": "c"
+    "priority_queue.h": "c",
+    "limitations.h": "c",
+    "validate.h": "c",
+    "utils.h": "c"
   },
   "[c]": {
     "editor.formatOnSave": true

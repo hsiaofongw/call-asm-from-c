@@ -7,27 +7,12 @@
 #include <string.h>
 
 #include "limitations.h"
-#include "validate_ipv4.h"
-#include "validate_ipv6.h"
-
-// 检查字符串 [base, base+len) 是否表示一个有效的 username.
-// 返回非 0 值表示有效，返回 0 表示非有效。
-int is_username_valid(char *base, int len) {
-  char *end = &base[len];
-  while (base < end) {
-    if (!isalnum(*base++)) {
-      return 0;
-    }
-  }
-  return 1;
-}
+#include "validate.h"
 
 enum AF_VER {
   AFV_IPv4 = 4,
   AFV_IPv6 = 6,
 };
-
-int is_port_str_valid(char *base, int len) {}
 
 auth_parse_ctx *auth_parse_ctx_create() {
   auth_parse_ctx *ap_ctx = malloc(sizeof(auth_parse_ctx));
