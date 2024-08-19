@@ -8,22 +8,29 @@ int is_dns_name_valid(char *base, int len) {
   }
 
   char *head = base, *end = &base[len];
+  int label_len = 0;
   while (head < end) {
     if (isalnum(*head)) {
+      label_len = 1;
       char *next = &head[1];
       if (next == end) {
-        return 0;
+        return 1;
       } else if (*next == '.') {
         head = &next[1];
         continue;
       } else if (isalnum(*next) || *next == '-') {
         char *w_begin = head;
         while (head < end && (isalnum(*head) || *head == '-')) {
+          ++label_len;
           ++head;
         }
 
         if ((head < end && *head == '.') || head == end) {
           if (head > w_begin && head[-1] == '-') {
+            return 0;
+          }
+
+          if (label_len > MAX_DNS_LABEL_LEN) {
             return 0;
           }
 
