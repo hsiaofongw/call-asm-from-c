@@ -20,6 +20,7 @@ int is_dns_name_valid(char *base, int len) {
         continue;
       } else if (isalnum(*next) || *next == '-') {
         char *w_begin = head;
+        --label_len;
         while (head < end && (isalnum(*head) || *head == '-')) {
           ++label_len;
           ++head;
