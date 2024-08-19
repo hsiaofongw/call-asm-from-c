@@ -29,7 +29,7 @@ int is_ipv6_str_valid(char *base, int len) {
   memcpy(test_buf, base, len);
   test_buf[len] = 0;
 
-  char *head = test_buf, *end = &test_buf[len], *last_cursor;
+  char *head = test_buf, *end = &test_buf[len];
   int n_words = 0, n_wildcard = 0, n_decs = 0;
   while (head < end) {
     char *next = &head[1];

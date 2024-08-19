@@ -27,7 +27,44 @@ enum AF_VER {
   AFV_IPv6 = 6,
 };
 
-int is_dns_label_valid(char *base, int len) {}
+int is_dns_label_valid(char *base, int len) {
+  char test_buf[MAX_HOSTNAME_ALLOWED];
+  if (len <= 0 || len > sizeof(test_buf) - 1) {
+    return 0;
+  }
+
+  memcpy(test_buf, base, len);
+  test_buf[len] = 0;
+
+  char *head = test_buf, *end = &test_buf[len];
+  while (head < end) {
+    if (isalnum(*head)) {
+      char *next = &head[1];
+      if (next < end && *next == '.') {
+        head = &head[2];
+        continue;
+      } else if (next == end) {
+        return 1;
+      } else if (next < end && (isalnum(*next) || *next == '-')) {
+        while (head < end && (isalnum(*head) || *head == '-')) {
+          ++head;
+          continue;
+        }
+        if (head < end && *head != '.') {
+          return 0;
+        }
+        head = &head[1];
+        continue;
+      } else {
+        return 0;
+      }
+    } else {
+      return 0;
+    }
+  }
+
+  return 1;
+}
 
 int is_port_str_valid(char *base, int len) {}
 
